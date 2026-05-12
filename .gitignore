@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv
+uv.lock
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local secrets / runtime artifacts
+local.dev
+*.sock
+*.log
+data/
+~/.local/share/shuvagent/
+
+# Build
+dist/
+build/
