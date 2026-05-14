@@ -3,7 +3,8 @@
 A desktop voice-agent app for Linux/Hyprland built on OpenAI's
 **GPT-Realtime-2** API.
 
-**Status:** pre-implementation. Plan under review.
+**Status:** foundation slice bootstrapped through PLAN-01 milestones 1.0-1.5.
+Remaining PLAN-01 milestones are still tracked in the plan doc.
 
 - Product-shape doc (parent):
   [`PLAN-42` in shuvoice repo](../shuvoice/PLAN-42-desktop-agent-gpt-realtime-2.md)
