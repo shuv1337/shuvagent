@@ -1,0 +1,35 @@
+config_version = 1
+
+[realtime]
+model = "gpt-realtime-2"
+api_key_env = "OPENAI_API_KEY"
+voice = "marin"
+reasoning_effort = "low"
+session_max_duration_sec = 300
+request_timeout_sec = 10.0
+
+[audio]
+capture_sample_rate = 24000
+playback_sample_rate = 24000
+capture_device = "default"
+playback_device = "default"
+
+[control]
+socket = ""
+
+[coordination]
+shuvoice_status_poll_sec = 1.0
+shuvoice_control_timeout_sec = 0.5
+
+[ui]
+show_overlay = false
+overlay_position = "top-center"
+
+[telemetry]
+sink = "stdout"
+file_path = ""
+debug_log_raw_text = false
+
+[privacy]
+log_session_audio_duration = true
+log_token_counts = true
