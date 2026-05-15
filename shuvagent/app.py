@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 
 from shuvagent.realtime.session import RealtimeAgentSession
@@ -8,6 +9,10 @@ from shuvagent.telemetry.schema import TelemetryEvent
 from shuvagent.tools.policy import PermissionGate
 from shuvagent.tools.registry import ToolRegistry
 from shuvagent.tools.types import ToolCallRequest, ToolResult
+
+AudioStream = AsyncIterator[bytes]
+PlaybackSink = Callable[[bytes], Awaitable[None]]
+EventSink = Callable[[TelemetryEvent], None]
 
 
 @dataclass
@@ -69,6 +74,102 @@ class ConversationApp:
         if not decision.allowed or decision.call is None:
             return ToolResult.failure(decision.reason or "tool_denied")
         return self._registry.execute(decision.call)
+
+    # ------------------------------------------------------------------
+    # Streaming entrypoint (M1.6 wiring)
+    # ------------------------------------------------------------------
+    async def run_streaming(
+        self,
+        *,
+        audio_in: AudioStream,
+        playback: PlaybackSink,
+        stop_event: asyncio.Event,
+        event_sink: EventSink | None = None,
+    ) -> None:
+        """Drive a live conversation session until ``stop_event`` is set.
+
+        ``audio_in`` yields PCM16 24kHz mic chunks. ``playback`` is
+        awaited with each PCM16 output chunk from the model. The loop
+        is cooperative — close the session by setting ``stop_event``.
+        """
+        emit = event_sink or (lambda _ev: None)
+        emit(TelemetryEvent(event="agent.session.start_requested"))
+        await self._session.connect()
+        emit(TelemetryEvent(event="agent.session.connected"))
+
+        audio_out_task = asyncio.create_task(
+            self._stream_audio_out(playback, emit)
+        )
+        tool_task = asyncio.create_task(self._stream_tool_calls(emit))
+        send_task = asyncio.create_task(
+            self._stream_audio_in(audio_in, stop_event, emit)
+        )
+        stop_task = asyncio.create_task(stop_event.wait())
+
+        try:
+            done, _ = await asyncio.wait(
+                {send_task, stop_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            del done
+        finally:
+            stop_event.set()
+            for task in (send_task, audio_out_task, tool_task, stop_task):
+                task.cancel()
+            await asyncio.gather(
+                send_task,
+                audio_out_task,
+                tool_task,
+                stop_task,
+                return_exceptions=True,
+            )
+            await self._session.close()
+            emit(TelemetryEvent(event="agent.session.stopped"))
+
+    async def _stream_audio_in(
+        self,
+        audio_in: AudioStream,
+        stop_event: asyncio.Event,
+        emit: EventSink,
+    ) -> None:
+        del emit
+        async for chunk in audio_in:
+            if stop_event.is_set():
+                return
+            await self._session.send_audio(chunk)
+
+    async def _stream_audio_out(
+        self, playback: PlaybackSink, emit: EventSink
+    ) -> None:
+        del emit
+        async for chunk in self._session.audio_out:
+            await playback(chunk)
+
+    async def _stream_tool_calls(self, emit: EventSink) -> None:
+        async for request in self._session.tool_calls:
+            emit(
+                TelemetryEvent(
+                    event="tool.requested",
+                    attributes={"tool": request.tool_name},
+                )
+            )
+            tool_result = self._execute_tool_call(request)
+            emit(
+                TelemetryEvent(
+                    event="tool.executed"
+                    if tool_result.ok
+                    else "tool.failed",
+                    attributes={
+                        "tool": request.tool_name,
+                        "ok": tool_result.ok,
+                        "error": tool_result.error,
+                    },
+                )
+            )
+            await self._session.send_tool_result(
+                request.call_id,
+                _tool_result_payload(tool_result),
+            )
 
 
 async def _anext(iterator):
