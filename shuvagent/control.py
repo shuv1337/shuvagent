@@ -9,6 +9,7 @@ from uuid import uuid4
 from shuvagent.coordination import Decision, can_start_agent_session
 
 StartDecision = Callable[[], Decision | Awaitable[Decision]]
+SessionHook = Callable[[str], Awaitable[None]]
 
 
 @dataclass
@@ -23,10 +24,14 @@ class ControlServer:
         socket_path: Path,
         *,
         start_decision: StartDecision | None = None,
+        on_start: SessionHook | None = None,
+        on_stop: SessionHook | None = None,
     ) -> None:
         self.socket_path = socket_path
         self.state = ControlState()
         self._start_decision = start_decision or can_start_agent_session
+        self._on_start = on_start
+        self._on_stop = on_stop
         self._server: asyncio.AbstractServer | None = None
 
     async def start(self) -> None:
@@ -63,7 +68,10 @@ class ControlServer:
         if verb == "stop":
             if self.state.status == "idle":
                 return "OK idle"
+            stopped_id = self.state.session_id or ""
             self.state = ControlState()
+            if self._on_stop is not None:
+                await self._on_stop(stopped_id)
             return "OK stopped"
         return f"ERROR unknown command: {verb or '<empty>'}"
 
@@ -77,6 +85,8 @@ class ControlServer:
             return f"ERROR start denied: {decision.reason}"
         session_id = uuid4().hex
         self.state = ControlState(status="active", session_id=session_id)
+        if self._on_start is not None:
+            await self._on_start(session_id)
         return f"OK started session={session_id}"
 
     async def _handle_client(
