@@ -73,25 +73,35 @@ the read-only voice session enough for live validation.
     are logged as deferred for active sessions.
   - `shuvagent issue1-qa` runs the same doctor preflight and prints the exact
     remaining issue #1 closure gates with safe evidence guidance.
+  - Multi-provider Realtime support is wired through
+    `shuvagent/realtime/providers.py`. OpenAI remains the default provider;
+    `realtime.provider = "gemini"` constructs the Pipecat-backed Gemini Live
+    session in `shuvagent/realtime/pipecat_gemini_session.py`.
+  - `tests/integration/test_live_gemini.py` is an opt-in Gemini/Pipecat smoke,
+    skipped unless `SHUVAGENT_RUN_LIVE_GEMINI=1` and `GOOGLE_API_KEY` are set.
 - **Live verified:** `shuvagent doctor`, the opt-in live Realtime WebSocket
   smoke, synthetic selected-text tool round trip with model audio bytes,
   foreground `shuvagent run`, and control-socket
   `status/start/status/stop/status` against the live backend.
 - **Not done:** remaining human/hardware QA from
   `docs/live-validation-checklist.md`: spoken microphone input, audible speaker
-  playback, spoken selected-text Q&A, stop during active model speech, and the
-  foreground/control-socket output-token-cap drill through the mic path.
+  playback, spoken selected-text Q&A, and Gemini/Pipecat live validation with
+  `GOOGLE_API_KEY` using `models/gemini-3.1-flash-live-preview`.
 
 ## Validation status
 - `uv run ruff check .` — clean.
-- `uv run pytest` — **126 passed, 3 skipped** (paid live Realtime tests skipped
-  in the normal suite).
-- `uv run mypy` — clean (24 strict source files).
+- `uv run pytest` — **206 passed, 4 skipped** (paid live Realtime/Gemini tests
+  skipped in the normal suite).
+- `uv run mypy` — clean (31 strict source files).
 - `uv run shuvagent issue1-qa` — pass; prints doctor preflight and remaining
   closure gates without leaking secrets or raw desktop content.
 - `uv run shuvagent doctor` — pass with `$OPENAI_API_KEY` set and all desktop
   probes available.
 - Live `SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q` — **3 passed in 37.34s**, including the full default read-only tool round.
+- Gemini-provider doctor with a temporary config passes config, `sounddevice`,
+  `pipecat`, ShuVoice, `wl-paste`, and `hyprctl`, but fails on missing
+  `$GOOGLE_API_KEY`. The local `~/.config/shuvagent/local.dev` currently has
+  `OPENAI_API_KEY` only.
 - Live `uv run shuvagent run` + control socket:
   `OK idle`, `OK started session=...`, `OK active session=...`, `OK stopped`,
   `OK idle`.
@@ -152,6 +162,10 @@ the read-only voice session enough for live validation.
 ## Important files
 - `PLAN-01-bootstrap-and-first-slice.md` — milestone definitions / exit gates.
 - `shuvagent/realtime/openai_session.py` — live WS implementation; strict mypy-covered.
+- `shuvagent/realtime/providers.py` — provider factory; OpenAI default,
+  Gemini opt-in.
+- `shuvagent/realtime/pipecat_gemini_session.py` — Pipecat Gemini Live adapter;
+  strict mypy-covered.
 - `shuvagent/tools/builtins/` — read-only tool catalogue,
   `default_read_only_tools()`, and opt-in PLAN-02 write specs via
   `default_write_tools()`.
@@ -170,8 +184,10 @@ the read-only voice session enough for live validation.
 - `tests/test_openai_session.py` — wire-format lock-down (no network).
 - `tests/test_session_runner.py` — duration-cap interruption behavior.
 - `tests/integration/test_streaming_loop_with_fake.py` — full streaming loop against `FakeRealtimeSession`.
-- `tests/integration/test_live_realtime.py` — opt-in live WebSocket smoke and
-  selected-text tool round trip.
+- `tests/integration/test_live_realtime.py` — opt-in live OpenAI WebSocket
+  smoke and selected-text tool round trip.
+- `tests/integration/test_live_gemini.py` — opt-in live Gemini/Pipecat connect
+  smoke; requires `GOOGLE_API_KEY` and `SHUVAGENT_RUN_LIVE_GEMINI=1`.
 - `docs/live-validation-checklist.md` — release-owner checklist for live
   Realtime, hardware audio, selected text, ShuVoice arbitration, safety caps,
   and telemetry.
@@ -182,9 +198,9 @@ the read-only voice session enough for live validation.
 1. **Run the "Issue #1 Closure Gates" section in
    `docs/live-validation-checklist.md`**. The issue should stay open until
    those target-desktop checks have fresh evidence: spoken mic input, audible
-   speaker playback, spoken selected-text Q&A, stop during active model speech,
-   and a foreground/control-socket output-token-cap stop drill through the mic
-   path.
+   speaker playback, spoken selected-text Q&A, and Gemini/Pipecat live
+   validation with `GOOGLE_API_KEY` using
+   `models/gemini-3.1-flash-live-preview`.
 2. **Consider further strict mypy expansion** to remaining modules once
    runtime APIs settle.
 
@@ -198,3 +214,8 @@ the read-only voice session enough for live validation.
   session-update errors. It still does not verify spoken microphone input or
   actual speaker playback because those require human/hardware QA.
 - License file still "TBD" in README — non-blocking.
+- Public Google docs checked during the Gemini work do not currently prove
+  `models/gemini-3.1-flash-live-preview`: Gemini 3 Flash preview is documented
+  without Live API support, while Live API examples use Gemini 2.5
+  native-audio/live models. Treat the requested model as unverified until the
+  target account passes the opt-in live smoke.
