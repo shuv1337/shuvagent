@@ -173,10 +173,18 @@ class ConversationApp:
         stop_event: asyncio.Event,
         emit: EventSink,
     ) -> None:
-        del emit
+        first_chunk = True
         async for chunk in audio_in:
             if stop_event.is_set():
                 return
+            if first_chunk:
+                first_chunk = False
+                emit(
+                    TelemetryEvent(
+                        event="audio.capture_chunk",
+                        attributes={"chunk_bytes": len(chunk)},
+                    )
+                )
             await self._session.send_audio(chunk)
 
     async def _stream_audio_out(

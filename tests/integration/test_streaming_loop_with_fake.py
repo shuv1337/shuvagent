@@ -89,6 +89,7 @@ def test_run_streaming_drives_one_turn_then_stops() -> None:
         ]
         assert "agent.session.start_requested" in events
         assert "agent.session.connected" in events
+        assert "audio.capture_chunk" in events
         assert "realtime.first_audio_response_latency_ms" in events
         assert "audio.playback_chunk" in events
         assert "tool.requested" in events
