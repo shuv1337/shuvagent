@@ -46,6 +46,7 @@ def _live_api_key() -> str:
 @pytest.mark.integration
 def test_live_realtime_session_opens_and_closes() -> None:
     api_key = _live_api_key()
+
     async def run() -> None:
         cfg = RealtimeConfig()
         session = OpenAIRealtimeSession(

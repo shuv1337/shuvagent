@@ -15,6 +15,11 @@ Foundation work is implemented through the first conversational slices:
 - realtime session protocol plus fake session tests
 - OpenAI Realtime WebSocket session implementation
 - read-only desktop tools for selection, clipboard, active window, and ShuVoice status
+- opt-in context tool specs for `web_search`, `fetch_web_page`, `screenshot`,
+  `local_files`, and `weather`; these are covered by fake-collaborator tests
+  and kept out of the minimal live default set
+- per-session time context injection into Realtime instructions
+- a tool router helper with `all`, `keyword`, and capped `llm` strategies
 - opt-in PLAN-02 write tool specs for `paste_text`,
   `replace_selected_text`, and `copy_to_clipboard`; these are not part of the
   default live tool set until an interactive confirmation UI is wired
@@ -44,6 +49,10 @@ The process is intentionally small and explicit:
 - `shuvagent.audio` handles PipeWire/PortAudio capture and playback through `sounddevice`.
 - `shuvagent.tools` routes every tool call through `ToolRegistry`, `PermissionGate`, optional confirmation, and an audit result.
 - `shuvagent.telemetry` emits redacted structured events.
+- `shuvagent.time_context` appends local date/time context to each Realtime
+  session update.
+- `shuvagent.tool_router` can filter large tool catalogues before they are sent
+  to the model.
 
 The default security posture is deny-by-default. Model events do not call handlers directly; they must pass through a gated tool-call token.
 
@@ -70,6 +79,8 @@ shuvagent treats these as subprocess boundaries. It does not import ShuVoice int
 - `OPENAI_API_KEY` for live GPT-Realtime-2 sessions
 - optional: `wl-paste`, `hyprctl`, and `shuvoice` on `PATH` for read-only desktop helpers
 - optional for write-tool development: `wl-copy` and `wtype`
+- optional for context tools: `grim`, `slurp`, and `tesseract` for screenshot
+  OCR; `beautifulsoup4` improves web-page extraction when installed
 
 ## Install
 

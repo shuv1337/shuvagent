@@ -47,8 +47,7 @@ def test_paste_text_confirmation_required() -> None:
     assert not decision.allowed
     assert decision.reason == "confirmation_required"
     assert (
-        confirmation.requests[0].reason
-        == "local_visible_write_requires_confirmation"
+        confirmation.requests[0].reason == "local_visible_write_requires_confirmation"
     )
 
 
@@ -120,8 +119,7 @@ def test_replace_selected_text_confirmation_required() -> None:
     assert not decision.allowed
     assert decision.reason == "confirmation_required"
     assert (
-        confirmation.requests[0].reason
-        == "local_visible_write_requires_confirmation"
+        confirmation.requests[0].reason == "local_visible_write_requires_confirmation"
     )
 
 

@@ -213,9 +213,7 @@ class ConversationApp:
             tool_result = self._execute_tool_call(request)
             emit(
                 TelemetryEvent(
-                    event="tool.executed"
-                    if tool_result.ok
-                    else "tool.failed",
+                    event="tool.executed" if tool_result.ok else "tool.failed",
                     attributes={
                         "tool": request.tool_name,
                         "ok": tool_result.ok,

@@ -36,8 +36,7 @@ def test_doctor_loads_local_env_without_rendering_key(
     rendered = format_doctor_checks(checks)
 
     assert any(
-        check.name == "openai_api_key" and check.status == "pass"
-        for check in checks
+        check.name == "openai_api_key" and check.status == "pass" for check in checks
     )
     assert "sk-test-secret" not in rendered
     assert os.environ["OPENAI_API_KEY"] == "sk-test-secret"

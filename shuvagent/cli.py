@@ -329,15 +329,11 @@ class _SessionRunner:
                 request_timeout_sec=self._config.realtime.request_timeout_sec,
             )
         )
-        app = ConversationApp(
-            session=session, registry=registry, gate=gate
-        )
+        app = ConversationApp(session=session, registry=registry, gate=gate)
         capture_pause = _CapturePauseController()
         monitored_session = _MicReleaseSession(session, capture_pause)
 
-        duration_task = asyncio.create_task(
-            self._stop_after_duration_cap(stop_event)
-        )
+        duration_task = asyncio.create_task(self._stop_after_duration_cap(stop_event))
         try:
             usage_tracker = UsageTracker(
                 output_token_cap=self._config.realtime.output_token_cap
@@ -552,9 +548,7 @@ async def _mic_stream(
                 status,
             )
             return
-        loop.call_soon_threadsafe(
-            enqueue_audio_chunk, queue, bytes(indata), event_sink
-        )
+        loop.call_soon_threadsafe(enqueue_audio_chunk, queue, bytes(indata), event_sink)
 
     def open_stream() -> _RawInputStream:
         try:

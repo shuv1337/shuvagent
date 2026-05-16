@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from shuvagent.realtime.events import RealtimeApiEvent, RealtimeError, SessionState
+from shuvagent.time_context import build_time_context
 from shuvagent.tools.types import ToolCallRequest, ToolSpec
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime"
@@ -219,7 +220,9 @@ class OpenAIRealtimeSession:
                 "type": "realtime",
                 "model": self.config.model,
                 "output_modalities": ["audio"],
-                "instructions": self.config.instructions,
+                "instructions": (
+                    f"{self.config.instructions}\n\n{build_time_context()}"
+                ),
                 "audio": {
                     "input": {
                         "format": {
@@ -278,15 +281,11 @@ class OpenAIRealtimeSession:
                     return
                 if await self._reconnect_with_backoff(exc):
                     continue
-                await self._error_queue.put(
-                    RealtimeError("ws_read_error", str(exc))
-                )
+                await self._error_queue.put(RealtimeError("ws_read_error", str(exc)))
                 return
             if not self.is_open:
                 return
-            if not await self._reconnect_with_backoff(
-                RuntimeError("websocket closed")
-            ):
+            if not await self._reconnect_with_backoff(RuntimeError("websocket closed")):
                 await self._error_queue.put(
                     RealtimeError("ws_read_error", "websocket closed")
                 )
@@ -387,9 +386,7 @@ class OpenAIRealtimeSession:
         # Transcripts and low-level session lifecycle events are intentionally
         # ignored here; telemetry only consumes safe API/error/usage events.
 
-    async def _emit_tool_call(
-        self, call_id: str, name: str, args_raw: object
-    ) -> None:
+    async def _emit_tool_call(self, call_id: str, name: str, args_raw: object) -> None:
         try:
             arguments = json.loads(args_raw) if isinstance(args_raw, str) else {}
         except json.JSONDecodeError:
