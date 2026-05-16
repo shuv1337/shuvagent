@@ -90,11 +90,50 @@ def test_run_streaming_drives_one_turn_then_stops() -> None:
         assert "agent.session.start_requested" in events
         assert "agent.session.connected" in events
         assert "realtime.first_audio_response_latency_ms" in events
+        assert "audio.playback_chunk" in events
         assert "tool.requested" in events
         assert "tool.executed" in events
         assert "realtime.response_cancel_requested" in events
         assert "agent.session.stopped" in events
         assert session.cancel_count == 1
+
+    asyncio.run(run())
+
+
+def test_run_streaming_emits_playback_error() -> None:
+    async def run() -> None:
+        session = FakeRealtimeSession(
+            [ScriptedTurn(user_audio=b"hello", audio_response=b"spoken")]
+        )
+        registry = ToolRegistry(window_snapshot=_window)
+        gate = PermissionGate(registry.specs(), window_snapshot=_window)
+        app = ConversationApp(session=session, registry=registry, gate=gate)
+
+        stop_event = asyncio.Event()
+        events: list[tuple[str, dict[str, object]]] = []
+
+        async def playback(chunk: bytes) -> None:
+            del chunk
+            raise RuntimeError("speaker write failed")
+
+        async def mic() -> AsyncIterator[bytes]:
+            yield b"hello"
+            await session.commit_input()
+            await asyncio.sleep(0.05)
+            stop_event.set()
+
+        await app.run_streaming(
+            audio_in=mic(),
+            playback=playback,
+            stop_event=stop_event,
+            event_sink=lambda ev: events.append((ev.event, ev.attributes)),
+        )
+
+        assert (
+            "audio.playback_error",
+            {"error_type": "RuntimeError", "message": "speaker write failed"},
+        ) in events
+        assert "agent.session.stopped" in [event for event, _ in events]
 
     asyncio.run(run())
 

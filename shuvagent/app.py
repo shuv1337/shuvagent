@@ -200,7 +200,26 @@ class ConversationApp:
                         },
                     )
                 )
-            await playback(chunk)
+            try:
+                await playback(chunk)
+            except Exception as exc:
+                emit(
+                    TelemetryEvent(
+                        event="audio.playback_error",
+                        level="error",
+                        attributes={
+                            "error_type": type(exc).__name__,
+                            "message": str(exc),
+                        },
+                    )
+                )
+                raise
+            emit(
+                TelemetryEvent(
+                    event="audio.playback_chunk",
+                    attributes={"chunk_bytes": len(chunk)},
+                )
+            )
 
     async def _stream_tool_calls(self, emit: EventSink) -> None:
         async for request in self._session.tool_calls:
