@@ -70,6 +70,10 @@ Safe evidence to record:
 - The control command outputs (`OK started`, `OK active`, `OK stopped`,
   `OK idle`).
 - The safe telemetry event names and structured reasons.
+- Expected safe events for the final human run:
+  `audio.capture_chunk`, `realtime.first_audio_response_latency_ms`,
+  `audio.playback_chunk`, `tool.requested`, `tool.executed`, and
+  `agent.session.stopped`.
 - `sounddevice`/doctor pass/fail status.
 - Confirmation that audio was heard, without including transcripts or raw
   selected text.
@@ -143,8 +147,10 @@ Expected result:
 Expected result:
 
 - Mic audio is accepted at 24 kHz PCM16 without device errors.
+- `audio.capture_chunk` emits once with a byte count and no audio content.
 - Speaker playback uses the default output device.
 - First model audio emits `realtime.first_audio_response_latency_ms`.
+- `audio.playback_chunk` emits with byte counts and no audio content.
 - Stop interrupts speech promptly.
 
 ## Selected Text Q&A

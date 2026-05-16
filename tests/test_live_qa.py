@@ -3,6 +3,7 @@ from __future__ import annotations
 from shuvagent.doctor import DoctorCheck
 from shuvagent.live_qa import (
     ISSUE1_CLOSURE_GATES,
+    ISSUE1_SAFE_EVENTS,
     format_issue1_qa,
     issue1_qa_exit_code,
 )
@@ -16,6 +17,8 @@ def test_format_issue1_qa_includes_doctor_and_closure_gates() -> None:
     assert "PASS config: ok" in output
     for gate in ISSUE1_CLOSURE_GATES:
         assert f"- [ ] {gate}" in output
+    for event in ISSUE1_SAFE_EVENTS:
+        assert f"- {event}" in output
     assert "Do not record transcripts" in output
 
 

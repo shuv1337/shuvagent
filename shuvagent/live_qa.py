@@ -8,6 +8,15 @@ ISSUE1_CLOSURE_GATES: tuple[str, ...] = (
     "Spoken selected-text Q&A using real `wl-paste --primary` selected text.",
 )
 
+ISSUE1_SAFE_EVENTS: tuple[str, ...] = (
+    "audio.capture_chunk",
+    "realtime.first_audio_response_latency_ms",
+    "audio.playback_chunk",
+    "tool.requested",
+    "tool.executed",
+    "agent.session.stopped",
+)
+
 
 def format_issue1_qa(checks: list[DoctorCheck]) -> str:
     lines = [
@@ -18,6 +27,13 @@ def format_issue1_qa(checks: list[DoctorCheck]) -> str:
         "Closure gates requiring target-desktop human/hardware evidence:",
     ]
     lines.extend(f"- [ ] {gate}" for gate in ISSUE1_CLOSURE_GATES)
+    lines.extend(
+        [
+            "",
+            "Expected safe telemetry during the final human run:",
+        ]
+    )
+    lines.extend(f"- {event}" for event in ISSUE1_SAFE_EVENTS)
     lines.extend(
         [
             "",
