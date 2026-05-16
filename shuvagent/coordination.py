@@ -43,8 +43,11 @@ class Decision:
 
 
 class PausableSession(Protocol):
-    is_open: bool
-    is_paused: bool
+    @property
+    def is_open(self) -> bool: ...
+
+    @property
+    def is_paused(self) -> bool: ...
 
     async def pause(self, reason: str) -> None: ...
 

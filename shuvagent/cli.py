@@ -5,7 +5,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from shuvagent.app import ConversationApp
 from shuvagent.audio.runtime import (
@@ -18,6 +18,7 @@ from shuvagent.config import AppConfig, load_config
 from shuvagent.control import ControlServer, send_control_command
 from shuvagent.coordination import (
     Decision,
+    PausableSession,
     can_start_agent_session,
     monitor_shuvoice,
     shuvoice_tts_stop,
@@ -247,13 +248,20 @@ class _SessionRunner:
         app = ConversationApp(
             session=session, registry=registry, gate=gate
         )
+        capture_pause = _CapturePauseController()
+        monitored_session = _MicReleaseSession(session, capture_pause)
 
         duration_task = asyncio.create_task(
             self._stop_after_duration_cap(stop_event)
         )
         try:
             await app.run_streaming(
-                audio_in=_mic_stream(stop_event, self._config, self._sink.emit),
+                audio_in=_mic_stream(
+                    stop_event,
+                    self._config,
+                    self._sink.emit,
+                    pause_controller=capture_pause,
+                ),
                 playback=_speaker_playback(self._config),
                 stop_event=stop_event,
                 event_sink=self._sink.emit,
@@ -262,7 +270,7 @@ class _SessionRunner:
                 ),
                 session_monitors=[
                     lambda: monitor_shuvoice(
-                        session,
+                        monitored_session,
                         interval_sec=self._config.coordination.shuvoice_status_poll_sec,
                         timeout=self._config.coordination.shuvoice_control_timeout_sec,
                         event_sink=self._emit_shuvoice_arbitration,
@@ -363,10 +371,53 @@ def _speaker_playback(config: AppConfig) -> Callable[[bytes], Awaitable[None]]:
     return play
 
 
+class _CapturePauseController:
+    def __init__(self) -> None:
+        self._paused = False
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
+    async def pause(self) -> None:
+        self._paused = True
+
+    async def resume(self) -> None:
+        self._paused = False
+
+
+class _MicReleaseSession:
+    def __init__(
+        self,
+        session: PausableSession,
+        capture_pause: _CapturePauseController,
+    ) -> None:
+        self._session = session
+        self._capture_pause = capture_pause
+
+    @property
+    def is_open(self) -> bool:
+        return self._session.is_open
+
+    @property
+    def is_paused(self) -> bool:
+        return self._session.is_paused
+
+    async def pause(self, reason: str) -> None:
+        await self._session.pause(reason)
+        await self._capture_pause.pause()
+
+    async def resume(self, reason: str) -> None:
+        await self._session.resume(reason)
+        await self._capture_pause.resume()
+
+
 async def _mic_stream(
     stop_event: asyncio.Event,
     config: AppConfig,
     event_sink: Callable[[TelemetryEvent], None],
+    *,
+    pause_controller: _CapturePauseController | None = None,
 ) -> AsyncIterator[bytes]:
     """Async generator yielding 24kHz PCM16 chunks from the default mic."""
     import sounddevice as sd
@@ -374,6 +425,7 @@ async def _mic_stream(
     queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=32)
     loop = asyncio.get_running_loop()
     block_frames = 480  # 20 ms at 24kHz
+    stream: _RawInputStream | None = None
 
     def callback(
         indata: bytes,
@@ -393,27 +445,57 @@ async def _mic_stream(
             enqueue_audio_chunk, queue, bytes(indata), event_sink
         )
 
-    try:
-        stream = sd.RawInputStream(
-            samplerate=config.audio.capture_sample_rate,
-            channels=1,
-            dtype="int16",
-            blocksize=block_frames,
-            device=None
-            if config.audio.capture_device == "default"
-            else config.audio.capture_device,
-            callback=callback,
-        )
-        stream.start()
-    except Exception as exc:
-        raise audio_runtime_error("audio_capture_device_error", exc) from exc
+    def open_stream() -> _RawInputStream:
+        try:
+            opened = cast(
+                _RawInputStream,
+                sd.RawInputStream(
+                    samplerate=config.audio.capture_sample_rate,
+                    channels=1,
+                    dtype="int16",
+                    blocksize=block_frames,
+                    device=None
+                    if config.audio.capture_device == "default"
+                    else config.audio.capture_device,
+                    callback=callback,
+                ),
+            )
+            opened.start()
+        except Exception as exc:
+            raise audio_runtime_error("audio_capture_device_error", exc) from exc
+        event_sink(TelemetryEvent(event="audio.capture_start"))
+        return opened
+
+    def close_stream(reason: str) -> None:
+        nonlocal stream
+        if stream is None:
+            return
+        try:
+            stream.stop()
+            stream.close()
+        finally:
+            stream = None
+            event_sink(
+                TelemetryEvent(
+                    event="audio.capture_stop",
+                    attributes={"reason": reason},
+                )
+            )
+
     try:
         while not stop_event.is_set():
+            if pause_controller is not None and pause_controller.is_paused:
+                close_stream("pause")
+                await asyncio.sleep(0.05)
+                continue
+            if stream is None:
+                stream = open_stream()
             try:
-                chunk = await asyncio.wait_for(queue.get(), timeout=0.5)
+                chunk = await asyncio.wait_for(queue.get(), timeout=0.05)
             except TimeoutError:
+                continue
+            if pause_controller is not None and pause_controller.is_paused:
                 continue
             yield chunk
     finally:
-        stream.stop()
-        stream.close()
+        close_stream("stop")

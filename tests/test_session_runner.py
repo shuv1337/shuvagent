@@ -1,8 +1,15 @@
 import asyncio
+import sys
+from types import SimpleNamespace
 
 from shuvagent import cli
 from shuvagent.audio.runtime import audio_runtime_error
-from shuvagent.cli import _SessionRunner, _start_decision
+from shuvagent.cli import (
+    _CapturePauseController,
+    _mic_stream,
+    _SessionRunner,
+    _start_decision,
+)
 from shuvagent.config import AppConfig, RealtimeConfig
 from shuvagent.telemetry.schema import TelemetryEvent
 
@@ -98,3 +105,90 @@ def test_shuvoice_arbitration_emits_safe_telemetry() -> None:
         "action": "pause",
         "reason": "shuvoice-took-mic",
     }
+
+
+def test_mic_stream_releases_device_on_pause_and_restarts_on_resume(
+    monkeypatch,
+) -> None:
+    async def run() -> None:
+        streams: list[FakeRawInputStream] = []
+
+        def raw_input_stream(**kwargs) -> FakeRawInputStream:
+            stream = FakeRawInputStream(kwargs["callback"])
+            streams.append(stream)
+            return stream
+
+        monkeypatch.setitem(
+            sys.modules,
+            "sounddevice",
+            SimpleNamespace(RawInputStream=raw_input_stream),
+        )
+        sink = MemorySink()
+        stop_event = asyncio.Event()
+        pause_controller = _CapturePauseController()
+        generator = _mic_stream(
+            stop_event,
+            AppConfig(),
+            sink.emit,
+            pause_controller=pause_controller,
+        )
+
+        first = await anext(generator)
+        assert first == b"chunk-1"
+        assert len(streams) == 1
+        assert streams[0].started
+        assert not streams[0].closed
+
+        await pause_controller.pause()
+        pending = asyncio.create_task(anext(generator))
+        await asyncio.sleep(0.1)
+
+        assert streams[0].stopped
+        assert streams[0].closed
+        assert not pending.done()
+
+        await pause_controller.resume()
+        second = await asyncio.wait_for(pending, timeout=1.0)
+
+        assert second == b"chunk-2"
+        assert len(streams) == 2
+        assert streams[1].started
+
+        stop_event.set()
+        await generator.aclose()
+        assert streams[1].stopped
+        assert streams[1].closed
+        assert [event.event for event in sink.events] == [
+            "audio.capture_start",
+            "audio.capture_stop",
+            "audio.capture_start",
+            "audio.capture_stop",
+        ]
+        assert [event.attributes.get("reason") for event in sink.events[1::2]] == [
+            "pause",
+            "stop",
+        ]
+
+    asyncio.run(run())
+
+
+class FakeRawInputStream:
+    _next_chunk = 1
+
+    def __init__(self, callback) -> None:
+        self._callback = callback
+        self.started = False
+        self.stopped = False
+        self.closed = False
+
+    def start(self) -> None:
+        self.started = True
+        chunk = f"chunk-{FakeRawInputStream._next_chunk}".encode()
+        FakeRawInputStream._next_chunk += 1
+        self._callback(chunk, 480, object(), None)
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def close(self) -> None:
+        self.closed = True
