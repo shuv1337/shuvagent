@@ -88,6 +88,7 @@ class OpenAIRealtimeSession:
     _reader_task: asyncio.Task[None] | None = field(default=None, init=False)
     _response_active: bool = field(default=False, init=False)
     _response_after_active_done: bool = field(default=False, init=False)
+    _emitted_tool_call_ids: set[str] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         self._audio_out_queue = asyncio.Queue()
@@ -311,6 +312,7 @@ class OpenAIRealtimeSession:
                 self.state = SessionState.CONNECTING
                 self._response_active = False
                 self._response_after_active_done = False
+                self._emitted_tool_call_ids.clear()
                 await self._connect_websocket()
             except Exception as exc:  # pragma: no cover - network retry path
                 last_error = exc
@@ -392,6 +394,9 @@ class OpenAIRealtimeSession:
         except json.JSONDecodeError:
             arguments = {}
         if call_id and name:
+            if call_id in self._emitted_tool_call_ids:
+                return
+            self._emitted_tool_call_ids.add(call_id)
             await self._tool_call_queue.put(
                 ToolCallRequest(
                     call_id=call_id,

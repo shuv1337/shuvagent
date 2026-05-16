@@ -127,6 +127,37 @@ def test_handle_output_item_function_call_emits_tool_request() -> None:
     asyncio.run(run())
 
 
+def test_duplicate_function_call_events_emit_one_tool_request() -> None:
+    async def run() -> None:
+        session = OpenAIRealtimeSession(_config())
+        await session._handle_event(
+            {
+                "type": "response.function_call_arguments.done",
+                "call_id": "call-dup",
+                "name": "get_selected_text",
+                "arguments": "{}",
+            }
+        )
+        await session._handle_event(
+            {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "function_call",
+                    "call_id": "call-dup",
+                    "name": "get_selected_text",
+                    "arguments": "{}",
+                },
+            }
+        )
+
+        req = await asyncio.wait_for(session._tool_call_queue.get(), 0.1)
+        assert req is not None
+        assert req.call_id == "call-dup"
+        assert session._tool_call_queue.empty()
+
+    asyncio.run(run())
+
+
 def test_handle_error_emits_realtime_error() -> None:
     async def run() -> None:
         session = OpenAIRealtimeSession(_config())
