@@ -43,6 +43,7 @@ files = [
     "shuvagent/cli.py",
     "shuvagent/control.py",
     "shuvagent/doctor.py",
+    "shuvagent/live_qa.py",
     "shuvagent/realtime/openai_session.py",
     "shuvagent/tools",
     "shuvagent/selection.py",

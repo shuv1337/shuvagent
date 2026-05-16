@@ -78,6 +78,12 @@ Do not close the GitHub issue from automated tests alone. The live Realtime
 smoke proves API/tool compatibility; it does not prove human-audible playback
 or spoken microphone-path behavior.
 
+Use this command to print the same closure gates alongside the doctor preflight:
+
+```bash
+uv run shuvagent issue1-qa
+```
+
 ## Foreground Process And Control Socket
 
 Without an API key loaded, `control start` must fail safely:

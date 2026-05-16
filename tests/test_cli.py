@@ -47,6 +47,22 @@ def test_doctor_command_returns_one_when_check_fails(monkeypatch, capsys) -> Non
     assert "FAIL openai_api_key: missing" in capsys.readouterr().out
 
 
+def test_issue1_qa_command_prints_closure_gates(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        cli,
+        "run_doctor",
+        lambda config_path: [DoctorCheck("config", "pass", "ok")],
+    )
+
+    assert cli.main(["issue1-qa"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Issue #1 live QA preflight" in output
+    assert "PASS config: ok" in output
+    assert "Closure gates requiring target-desktop" in output
+    assert "Spoken microphone input" in output
+
+
 def test_control_status_command_returns_zero(monkeypatch, capsys) -> None:
     async def fake_send_control_command(socket_path, verb: str) -> str:
         del socket_path

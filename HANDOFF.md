@@ -71,6 +71,8 @@ the read-only voice session enough for live validation.
     update safety caps immediately; invalid reloads emit
     `app.lifecycle.config_reload_failed` and keep the old config. Voice changes
     are logged as deferred for active sessions.
+  - `shuvagent issue1-qa` runs the same doctor preflight and prints the exact
+    remaining issue #1 closure gates with safe evidence guidance.
 - **Live verified:** `shuvagent doctor`, the opt-in live Realtime WebSocket
   smoke, synthetic selected-text tool round trip with model audio bytes,
   foreground `shuvagent run`, and control-socket
@@ -82,9 +84,11 @@ the read-only voice session enough for live validation.
 
 ## Validation status
 - `uv run ruff check .` — clean.
-- `uv run pytest` — **123 passed, 3 skipped** (paid live Realtime tests skipped
+- `uv run pytest` — **126 passed, 3 skipped** (paid live Realtime tests skipped
   in the normal suite).
-- `uv run mypy` — clean (23 strict source files).
+- `uv run mypy` — clean (24 strict source files).
+- `uv run shuvagent issue1-qa` — pass; prints doctor preflight and remaining
+  closure gates without leaking secrets or raw desktop content.
 - `uv run shuvagent doctor` — pass with `$OPENAI_API_KEY` set and all desktop
   probes available.
 - Live `SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q` — **3 passed in 37.34s**, including the full default read-only tool round.
@@ -159,6 +163,8 @@ the read-only voice session enough for live validation.
 - `shuvagent/doctor.py` — live-validation preflight checks for config,
   credentials, optional desktop helpers, and Python audio/network modules.
 - `shuvagent/usage.py` — token usage parsing/tracking and rate-limit parsing.
+- `shuvagent/live_qa.py` — issue #1 preflight/checklist formatter used by
+  `shuvagent issue1-qa`.
 - `tests/test_cli.py` — CLI command behavior, runner lifecycle, status lines,
   and SIGHUP config reload behavior.
 - `tests/test_openai_session.py` — wire-format lock-down (no network).

@@ -108,6 +108,12 @@ Check live-validation prerequisites without printing secret values:
 uv run shuvagent doctor
 ```
 
+Print the issue #1 live QA closure gates with the same preflight:
+
+```bash
+uv run shuvagent issue1-qa
+```
+
 Use the Python module entry point:
 
 ```bash

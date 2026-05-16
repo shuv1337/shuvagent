@@ -28,6 +28,7 @@ from shuvagent.coordination import (
 )
 from shuvagent.doctor import doctor_exit_code, format_doctor_checks, run_doctor
 from shuvagent.env_loader import load_env_file
+from shuvagent.live_qa import format_issue1_qa, issue1_qa_exit_code
 from shuvagent.paths import default_local_env_path
 from shuvagent.realtime.openai_session import (
     OpenAIRealtimeSession,
@@ -75,6 +76,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         checks = run_doctor(args.config)
         print(format_doctor_checks(checks))
         return doctor_exit_code(checks)
+    if args.command == "issue1-qa":
+        checks = run_doctor(args.config)
+        print(format_issue1_qa(checks))
+        return issue1_qa_exit_code(checks)
     if args.command in {"start", "stop", "status"}:
         return asyncio.run(_control(args.command, args.config))
     parser.error(f"unknown command {args.command}")
@@ -90,6 +95,7 @@ def _build_parser() -> argparse.ArgumentParser:
     control = subparsers.add_parser("control", help="send a control command")
     control.add_argument("verb", choices=["start", "stop", "status"])
     subparsers.add_parser("doctor", help="check live validation prerequisites")
+    subparsers.add_parser("issue1-qa", help="print issue #1 live QA closure gates")
     subparsers.add_parser("start", help="alias for control start")
     subparsers.add_parser("stop", help="alias for control stop")
     subparsers.add_parser("status", help="alias for control status")

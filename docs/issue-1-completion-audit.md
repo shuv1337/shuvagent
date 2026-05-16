@@ -32,9 +32,10 @@ foreground output-token-cap acceptance gates pass.
 | Audio overflow/status/device error telemetry | `shuvagent/audio/runtime.py`; `audio.device_error`; `tests/test_audio_runtime.py`; `tests/test_session_runner.py` |
 | Stderr lifecycle status indicator | `_SessionRunner` status writer; `tests/test_cli.py`; `tests/test_session_runner.py` |
 | Config reload | SIGHUP handler in `shuvagent.cli`; safety cap mutation; invalid reload preservation; active-session voice deferral; `tests/test_cli.py` |
+| Issue #1 live QA helper | `uv run shuvagent issue1-qa`; `shuvagent/live_qa.py`; `tests/test_live_qa.py`; prints remaining closure gates and safe evidence guidance |
 | Config validation for voices/safety caps | `AppConfig.validate()`; `tests/test_config.py` |
 | Example config schema alignment | `examples/config.toml`; `tests/test_config.py::test_example_config_matches_current_schema` |
-| Strict type coverage where stable | `pyproject.toml`; `uv run mypy` over 23 source files, including `shuvagent/app.py`, `shuvagent/cli.py`, `shuvagent/control.py`, and `shuvagent/realtime/openai_session.py` |
+| Strict type coverage where stable | `pyproject.toml`; `uv run mypy` over 24 source files, including `shuvagent/app.py`, `shuvagent/cli.py`, `shuvagent/control.py`, and `shuvagent/realtime/openai_session.py` |
 | Live prerequisite preflight | `uv run shuvagent doctor`; `tests/test_doctor.py` |
 | Manual release checklist | `docs/live-validation-checklist.md` |
 
@@ -99,12 +100,14 @@ SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime
 Current result:
 
 - `ruff`: pass.
-- `mypy`: pass for 23 strict source files.
+- `mypy`: pass for 24 strict source files.
 - `pytest`: pass with the paid live Realtime tests skipped when the explicit
   flag is absent.
 - `doctor`: pass with config, safety caps, `$OPENAI_API_KEY`, `sounddevice`,
   `websockets`, `shuvoice`, `wl-paste`, and `hyprctl`.
 - opt-in live Realtime smoke and selected-text tool round trip: pass, not skipped.
+- `uv run shuvagent issue1-qa`: pass; prints doctor preflight and the five
+  remaining target-desktop closure gates.
 - outbound Realtime frames include `max_output_tokens` matching
   `realtime.output_token_cap`.
 
