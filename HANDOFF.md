@@ -173,10 +173,12 @@ the read-only voice session enough for live validation.
   explicit list of unverified live gates.
 
 ## Next steps
-1. **Run manual hardware QA** with `docs/live-validation-checklist.md`,
-   especially spoken mic input, speaker playback, selected-text Q&A by voice,
-   stop during active model speech, and a foreground/control-socket
-   output-token-cap stop drill through the mic path.
+1. **Run the "Issue #1 Closure Gates" section in
+   `docs/live-validation-checklist.md`**. The issue should stay open until
+   those target-desktop checks have fresh evidence: spoken mic input, audible
+   speaker playback, spoken selected-text Q&A, stop during active model speech,
+   and a foreground/control-socket output-token-cap stop drill through the mic
+   path.
 2. **Consider further strict mypy expansion** to remaining modules once
    runtime APIs settle.
 

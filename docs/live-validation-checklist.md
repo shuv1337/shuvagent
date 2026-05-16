@@ -52,6 +52,32 @@ Expected result:
 - No raw selected text, clipboard text, transcripts, or API key appears in the
   output.
 
+## Issue #1 Closure Gates
+
+Issue #1 should remain open until all of these target-desktop checks have
+fresh evidence:
+
+- [ ] Spoken microphone input through `uv run shuvagent run` +
+  `uv run shuvagent control start`.
+- [ ] Audible model speech through the default speaker.
+- [ ] Spoken selected-text Q&A using real `wl-paste --primary` selected text.
+- [ ] `uv run shuvagent control stop` interrupts active model speech promptly.
+- [ ] A foreground/control-socket session with `output_token_cap = 1` stops via
+  `agent.session.interrupted reason=output_token_cap` through the mic path.
+
+Safe evidence to record:
+
+- The control command outputs (`OK started`, `OK active`, `OK stopped`,
+  `OK idle`).
+- The safe telemetry event names and structured reasons.
+- `sounddevice`/doctor pass/fail status.
+- Confirmation that audio was heard, without including transcripts or raw
+  selected text.
+
+Do not close the GitHub issue from automated tests alone. The live Realtime
+smoke proves API/tool compatibility; it does not prove human-audible playback
+or spoken microphone-path behavior.
+
 ## Foreground Process And Control Socket
 
 Without an API key loaded, `control start` must fail safely:
