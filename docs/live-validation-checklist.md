@@ -62,7 +62,7 @@ fresh evidence:
 - [ ] Audible model speech through the default speaker.
 - [ ] Spoken selected-text Q&A using real `wl-paste --primary` selected text.
 - [ ] `uv run shuvagent control stop` interrupts active model speech promptly.
-- [ ] A foreground/control-socket session with `output_token_cap = 1` stops via
+- [x] A foreground/control-socket session with `output_token_cap = 1` stops via
   `agent.session.interrupted reason=output_token_cap` through the mic path.
 
 Safe evidence to record:

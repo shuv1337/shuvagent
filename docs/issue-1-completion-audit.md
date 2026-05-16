@@ -3,10 +3,10 @@
 Issue: `PRD: Live validation and production hardening for read-only voice slice`
 
 Status: source hardening, local validation, live OpenAI Realtime smoke,
-foreground/control-socket live smoke, and ShuVoice arbitration drills are
-complete. The issue is not release-complete until the remaining
-human/hardware-driven microphone, speaker, spoken selected-text Q&A, and
-foreground output-token-cap acceptance gates pass.
+foreground/control-socket live smoke, ShuVoice arbitration drills, and the
+foreground microphone-path `output_token_cap = 1` drill are complete. The issue
+is not release-complete until the remaining human/hardware-driven microphone,
+speaker, spoken selected-text Q&A, and active-speech stop acceptance gates pass.
 
 ## Local Evidence
 
@@ -21,7 +21,7 @@ foreground output-token-cap acceptance gates pass.
 | 24 kHz mic and speaker path | `_mic_stream()` and `_speaker_playback()` use 24 kHz PCM16 sounddevice streams |
 | First-audio latency | `realtime.first_audio_response_latency_ms`; `tests/integration/test_streaming_loop_with_fake.py` |
 | Duration cap | `_stop_after_duration_cap()`; `tests/test_session_runner.py` |
-| Output token cap | Realtime `max_output_tokens` in `session.update` / `response.create`; `shuvagent/usage.py` backstop; `tests/test_openai_session.py`; `tests/test_usage.py`; `tests/integration/test_streaming_loop_with_fake.py` |
+| Output token cap | Realtime `max_output_tokens` in `session.update` / `response.create`; `shuvagent/usage.py` backstop; `tests/test_openai_session.py`; `tests/test_usage.py`; `tests/integration/test_streaming_loop_with_fake.py`; live foreground/control mic-path cap drill |
 | Read-only selected text, clipboard, active window, ShuVoice status tools | `shuvagent/tools/builtins/`; `tests/test_builtin_tools.py` |
 | Opt-in PLAN-02 write tools | `paste_text`, `replace_selected_text`, `copy_to_clipboard`; `tests/test_write_tools.py`; not registered in the default live read-only tool set |
 | Permission gate remains in tool path | `ConversationApp._execute_tool_call()`; `tests/test_tool_policy.py` |
@@ -54,7 +54,7 @@ foreground output-token-cap acceptance gates pass.
 | US9 play model audio through default speaker | partial live | `_speaker_playback`; `sounddevice.check_output_settings` passed; live `_speaker_playback` wrote a 20 ms silent PCM buffer; audible speaker QA pending |
 | US10 first-audio latency measured | local/fake verified | `realtime.first_audio_response_latency_ms`; streaming fake tests |
 | US11 hard duration cap | verified live | `_stop_after_duration_cap`; `tests/test_session_runner.py`; live 2-second config returned status to idle |
-| US12 output token cap | partial live | config validation, Realtime payload tests, usage tests; live usage accounting crossed cap with `output_tokens=1` |
+| US12 output token cap | verified live | config validation, Realtime payload tests, usage tests; live foreground/control mic-path drill with `output_token_cap=1` emitted `agent.session.interrupted reason=output_token_cap` |
 | US13 selected-text Q&A end-to-end | partial | live synthetic selected-text tool round trip produced model audio bytes; spoken mic-driven Q&A pending |
 | US14 clipboard read-only | local/desktop verified | real clipboard helper returned safe summary; write specs are opt-in only and default live registration remains read-only |
 | US15 active-window context | desktop verified | real `hyprctl activewindow -j` returned active app/title summary |
@@ -102,7 +102,8 @@ Current result:
 - `ruff`: pass.
 - `mypy`: pass for 24 strict source files.
 - `pytest`: pass with the paid live Realtime tests skipped when the explicit
-  flag is absent.
+  flag is absent (`194 passed, 3 skipped` after the Realtime duplicate tool-call
+  regression test).
 - `doctor`: pass with config, safety caps, `$OPENAI_API_KEY`, `sounddevice`,
   `websockets`, `shuvoice`, `wl-paste`, and `hyprctl`.
 - opt-in live Realtime smoke and selected-text tool round trip: pass, not skipped.
@@ -203,8 +204,6 @@ unit/fake-session evidence or direct API injection alone:
 2. Selected-text Q&A end-to-end by spoken microphone prompt with real
    `wl-paste` selected text.
 3. Prompt `control stop` behavior during active model speech.
-4. Full foreground/control-socket stop-on-output-token-cap behavior with spoken
-   or microphone-path session input.
 
 ## Additional Live ShuVoice Pre-Start Evidence
 
@@ -329,6 +328,37 @@ agent.session.stopped
 
 ## Additional Live Output-Token-Cap Evidence
 
+Foreground/control-socket microphone-path drill with `output_token_cap = 1`:
+
+```text
+uv run shuvagent --config /tmp/shuvagent-issue1-cap1b-aosk/config.toml control status
+# OK idle
+uv run shuvagent --config /tmp/shuvagent-issue1-cap1b-aosk/config.toml control start
+# OK started session=7ffc9c85dbfe405c8c0d2715aef62fbf
+espeak-ng -s 145 'please answer with a few words about this test'
+uv run shuvagent --config /tmp/shuvagent-issue1-cap1b-aosk/config.toml control status
+# OK active session=7ffc9c85dbfe405c8c0d2715aef62fbf
+```
+
+Safe telemetry evidence:
+
+```text
+output_token_cap=1
+realtime.usage
+agent.session.interrupted reason=output_token_cap
+agent.session.duration_ms
+realtime.usage.summary output_token_cap=1
+audio.capture_stop reason=stop
+realtime.response_cancel_requested
+conversation_already_has_active_response=false
+```
+
+The status line also emitted:
+
+```text
+[shuvagent] Session stopped: output_token_cap
+```
+
 Direct live Realtime accounting drill:
 
 ```text
@@ -339,10 +369,44 @@ snapshot={'input_tokens': 54, 'output_tokens': 1, 'total_tokens': 55, 'output_to
 errors=[]
 ```
 
-This verifies the live API returns usage data compatible with the production
-usage parser/tracker and that the cap decision fires at the threshold. The full
-foreground/control-socket cap-stop drill remains pending because the control
-path takes real microphone input.
+Together these verify the live API returns usage data compatible with the
+production usage parser/tracker and that the foreground/control-socket mic-path
+cap decision fires at the threshold.
+
+## Additional Live Selected-Text Mic-Path Evidence
+
+Synthetic selected-text microphone-path drill after Realtime tool-call dedupe
+hardening:
+
+```text
+uv run shuvagent --config /tmp/shuvagent-issue1-micpath-jBsh/config.toml control status
+# OK idle
+uv run shuvagent --config /tmp/shuvagent-issue1-micpath-jBsh/config.toml control start
+# OK started session=3b1d3b30b5354de29e139fa6b0bc478f
+wl-copy --primary < synthetic safe selected text
+espeak-ng -s 145 'what does the selected text mean'
+uv run shuvagent --config /tmp/shuvagent-issue1-micpath-jBsh/config.toml control stop
+# OK idle
+```
+
+Safe telemetry evidence:
+
+```text
+agent.session.connected
+audio.capture_start
+realtime.first_audio_response_latency_ms
+tool.requested get_selected_text
+tool.executed get_selected_text ok=true
+agent.session.interrupted reason=output_token_cap
+audio.capture_stop reason=stop
+raw synthetic selected text present=false
+conversation_already_has_active_response=false
+```
+
+This verifies the microphone-path selected-text tool round trip with synthetic
+text and no raw selected-text telemetry leakage. The remaining selected-text
+gate is specifically human-spoken Q&A with real selected text and audible
+answer confirmation.
 
 ## Completion Rule
 
