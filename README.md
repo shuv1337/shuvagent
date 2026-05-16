@@ -15,6 +15,9 @@ Foundation work is implemented through the first conversational slices:
 - realtime session protocol plus fake session tests
 - OpenAI Realtime WebSocket session implementation
 - read-only desktop tools for selection, clipboard, active window, and ShuVoice status
+- opt-in PLAN-02 write tool specs for `paste_text`,
+  `replace_selected_text`, and `copy_to_clipboard`; these are not part of the
+  default live tool set until an interactive confirmation UI is wired
 - streaming CLI run path wired through the app/session loop
 - runtime safety caps for session duration and model output tokens
 - redacted telemetry for session duration, first model audio latency, API errors,
@@ -62,6 +65,7 @@ shuvagent treats these as subprocess boundaries. It does not import ShuVoice int
 - `uv`
 - `OPENAI_API_KEY` for live GPT-Realtime-2 sessions
 - optional: `wl-paste`, `hyprctl`, and `shuvoice` on `PATH` for read-only desktop helpers
+- optional for write-tool development: `wl-copy` and `wtype`
 
 ## Install
 

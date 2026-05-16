@@ -60,6 +60,11 @@ the read-only voice session enough for live validation.
     and playback device open/write failures raise stable coded errors through
     `shuvagent/audio/runtime.py` and emit `audio.device_error` before the
     generic session failure event.
+  - PLAN-02 write-tool foundation exists as opt-in builtins:
+    `paste_text`, `replace_selected_text`, and `copy_to_clipboard`. They are
+    not in the default live read-only tool set yet; tests cover default denial,
+    confirmation-required paths, focus invalidation for visible writes, command
+    execution with fakes, and redaction-safe result summaries.
 - **Live verified:** `shuvagent doctor`, the opt-in live Realtime WebSocket
   smoke, synthetic selected-text tool round trip with model audio bytes,
   foreground `shuvagent run`, and control-socket
@@ -69,9 +74,9 @@ the read-only voice session enough for live validation.
 
 ## Validation status
 - `uv run ruff check .` — clean.
-- `uv run pytest` — **84 passed, 2 skipped** (paid live Realtime tests skipped in
-  the normal suite).
-- `uv run mypy` — clean (19 strict source files).
+- `uv run pytest` — **112 passed, 3 skipped** (paid live Realtime tests skipped
+  in the normal suite).
+- `uv run mypy` — clean (23 strict source files).
 - `uv run shuvagent doctor` — pass with `$OPENAI_API_KEY` set and all desktop
   probes available.
 - Live `SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q` — **2 passed in 10.55s**.
@@ -135,7 +140,9 @@ the read-only voice session enough for live validation.
 ## Important files
 - `PLAN-01-bootstrap-and-first-slice.md` — milestone definitions / exit gates.
 - `shuvagent/realtime/openai_session.py` — live WS implementation; strict mypy-covered.
-- `shuvagent/tools/builtins/` — read-only tool catalogue + `default_read_only_tools()`.
+- `shuvagent/tools/builtins/` — read-only tool catalogue,
+  `default_read_only_tools()`, and opt-in PLAN-02 write specs via
+  `default_write_tools()`.
 - `shuvagent/selection.py`, `shuvagent/window.py` — desktop I/O helpers.
 - `shuvagent/app.py` — `ConversationApp.run_streaming()`, first-audio telemetry, usage/rate-limit/error handling, session monitor lifecycle; strict mypy-covered.
 - `shuvagent/cli.py` — `_SessionRunner`, duration cap, token cap wiring, ShuVoice monitor wiring, `_mic_stream`, `_speaker_playback`; strict mypy-covered.

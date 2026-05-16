@@ -427,12 +427,18 @@ payload omits the raw text — only length, hash prefix, and source.
 The **model** receives the full text (that's the whole point), but
 logs/telemetry do not.
 
-### 6.4 Write tools — NOT in this plan
+### 6.4 Write tools — deferred from PLAN-01
 
 `paste_text`, `replace_selected_text`, `copy_to_clipboard`, `stop_speaking`,
 `speak_text` are explicitly **out of scope for PLAN-01**. They land in
 PLAN-02 after the gate has been exercised by read tools in production
 for at least one week.
+
+Implementation note, 2026-05-16: the first PLAN-02 local write specs now exist
+as explicit opt-in builtins: `paste_text`, `replace_selected_text`, and
+`copy_to_clipboard`. They are covered by confirmation/focus-invalidation tests,
+but they are intentionally not registered in the default live read-only tool set
+until an interactive confirmation provider is available.
 
 ### 6.5 Tool-policy tests (mandatory before merging registry)
 

@@ -22,6 +22,7 @@ arbitration QA pass.
 | Duration cap | `_stop_after_duration_cap()`; `tests/test_session_runner.py` |
 | Output token cap | Realtime `max_output_tokens` in `session.update` / `response.create`; `shuvagent/usage.py` backstop; `tests/test_openai_session.py`; `tests/test_usage.py`; `tests/integration/test_streaming_loop_with_fake.py` |
 | Read-only selected text, clipboard, active window, ShuVoice status tools | `shuvagent/tools/builtins/`; `tests/test_builtin_tools.py` |
+| Opt-in PLAN-02 write tools | `paste_text`, `replace_selected_text`, `copy_to_clipboard`; `tests/test_write_tools.py`; not registered in the default live read-only tool set |
 | Permission gate remains in tool path | `ConversationApp._execute_tool_call()`; `tests/test_tool_policy.py` |
 | Privacy/redaction | `shuvagent/telemetry/redact.py`; `tests/test_redaction.py`; streaming tool telemetry excludes raw tool results; no doctor output renders API keys |
 | Opt-in live Realtime smoke | `tests/integration/test_live_realtime.py`; skipped without both API key and explicit flag; passed with credentials and `SHUVAGENT_RUN_LIVE_REALTIME=1` |
@@ -30,7 +31,7 @@ arbitration QA pass.
 | Audio overflow/status/device error telemetry | `shuvagent/audio/runtime.py`; `audio.device_error`; `tests/test_audio_runtime.py`; `tests/test_session_runner.py` |
 | Config validation for voices/safety caps | `AppConfig.validate()`; `tests/test_config.py` |
 | Example config schema alignment | `examples/config.toml`; `tests/test_config.py::test_example_config_matches_current_schema` |
-| Strict type coverage where stable | `pyproject.toml`; `uv run mypy` over 19 source files, including `shuvagent/app.py`, `shuvagent/cli.py`, `shuvagent/control.py`, and `shuvagent/realtime/openai_session.py` |
+| Strict type coverage where stable | `pyproject.toml`; `uv run mypy` over 23 source files, including `shuvagent/app.py`, `shuvagent/cli.py`, `shuvagent/control.py`, and `shuvagent/realtime/openai_session.py` |
 | Live prerequisite preflight | `uv run shuvagent doctor`; `tests/test_doctor.py` |
 | Manual release checklist | `docs/live-validation-checklist.md` |
 
@@ -51,7 +52,7 @@ arbitration QA pass.
 | US11 hard duration cap | verified live | `_stop_after_duration_cap`; `tests/test_session_runner.py`; live 2-second config returned status to idle |
 | US12 output token cap | partial live | config validation, Realtime payload tests, usage tests; live usage accounting crossed cap with `output_tokens=1` |
 | US13 selected-text Q&A end-to-end | partial | live synthetic selected-text tool round trip produced model audio bytes; spoken mic-driven Q&A pending |
-| US14 clipboard read-only | local/desktop verified | real clipboard helper returned safe summary; no write tool exists |
+| US14 clipboard read-only | local/desktop verified | real clipboard helper returned safe summary; write specs are opt-in only and default live registration remains read-only |
 | US15 active-window context | desktop verified | real `hyprctl activewindow -j` returned active app/title summary |
 | US16 ShuVoice status read-only tool | local/CLI verified | builtin tool tests and live `shuvoice control status` probe returned `OK idle` |
 | US17 no raw private text/API keys in logs | live/local verified | redaction tests, tool telemetry regression, doctor output; live foreground run with synthetic selection/clipboard emitted no raw synthetic text |
@@ -76,7 +77,7 @@ arbitration QA pass.
 | US36 lifecycle orchestration isolated from CLI parsing | verified | `_SessionRunner`; control tests |
 | US37 read-only tools use permission gate | verified | `ConversationApp._execute_tool_call`; policy tests |
 | US38 usage/rate-limit fixtures | verified | usage and streaming fake tests |
-| US39 mypy coverage expanded where stable | verified | `uv run mypy` over 19 strict source files |
+| US39 mypy coverage expanded where stable | verified | `uv run mypy` over 23 strict source files |
 | US40 manual QA checklist | verified artifact | `docs/live-validation-checklist.md`; execution pending |
 | Out of scope remains out of scope | verified | no write tools, persistent memory, overlay, MCP, WebRTC, Maple export, or ShuVoice repo edits |
 
