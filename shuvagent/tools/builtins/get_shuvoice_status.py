@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from shuvagent.coordination import Runner, default_runner, shuvoice_status
+from shuvagent.coordination import (
+    Runner,
+    ShuVoiceStatusUnavailable,
+    default_runner,
+    shuvoice_status,
+)
 from shuvagent.tools.types import (
     GatedToolCall,
     ToolResult,
@@ -25,11 +30,14 @@ INPUT_SCHEMA: dict[str, object] = {
 def spec(
     *,
     runner: Runner = default_runner,
-    timeout: float = 0.5,
+    timeout: float = 2.0,
 ) -> ToolSpec:
     def handler(call: GatedToolCall) -> ToolResult:
         del call
-        status = shuvoice_status(runner=runner, timeout=timeout)
+        try:
+            status = shuvoice_status(runner=runner, timeout=timeout)
+        except ShuVoiceStatusUnavailable:
+            return ToolResult.failure("shuvoice_status_unavailable")
         if status is None:
             return ToolResult.success({"running": False, "state": None})
         return ToolResult.success(

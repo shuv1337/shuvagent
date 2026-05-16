@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime
 
 from shuvagent.tools.builtins import (
@@ -95,3 +96,18 @@ def test_get_shuvoice_status_reports_not_running_when_runner_fails() -> None:
     value = _execute(get_shuvoice_status_spec(runner=runner))
     assert value["running"] is False
     assert value["state"] is None
+
+
+def test_get_shuvoice_status_reports_failure_when_runner_times_out() -> None:
+    def runner(args: list[str], timeout: float) -> str:
+        raise subprocess.TimeoutExpired(args, timeout)
+
+    spec = get_shuvoice_status_spec(runner=runner)
+    registry = ToolRegistry(window_snapshot=_window)
+    registry.register(spec)
+    gate = PermissionGate(registry.specs(), window_snapshot=_window)
+    decision = gate.authorize(ToolCallRequest("1", spec.name, {}))
+    assert decision.allowed and decision.call is not None
+    result = registry.execute(decision.call)
+    assert not result.ok
+    assert result.error == "shuvoice_status_unavailable"

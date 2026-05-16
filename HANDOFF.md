@@ -80,12 +80,12 @@ the read-only voice session enough for live validation.
 
 ## Validation status
 - `uv run ruff check .` — clean.
-- `uv run pytest` — **122 passed, 3 skipped** (paid live Realtime tests skipped
+- `uv run pytest` — **123 passed, 3 skipped** (paid live Realtime tests skipped
   in the normal suite).
 - `uv run mypy` — clean (23 strict source files).
 - `uv run shuvagent doctor` — pass with `$OPENAI_API_KEY` set and all desktop
   probes available.
-- Live `SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q` — **2 passed in 10.55s**.
+- Live `SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q` — **3 passed in 37.34s**, including the full default read-only tool round.
 - Live `uv run shuvagent run` + control socket:
   `OK idle`, `OK started session=...`, `OK active session=...`, `OK stopped`,
   `OK idle`.

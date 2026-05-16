@@ -25,7 +25,7 @@ arbitration QA pass.
 | Opt-in PLAN-02 write tools | `paste_text`, `replace_selected_text`, `copy_to_clipboard`; `tests/test_write_tools.py`; not registered in the default live read-only tool set |
 | Permission gate remains in tool path | `ConversationApp._execute_tool_call()`; `tests/test_tool_policy.py` |
 | Privacy/redaction | `shuvagent/telemetry/redact.py`; `tests/test_redaction.py`; streaming tool telemetry excludes raw tool results; no doctor output renders API keys |
-| Opt-in live Realtime smoke | `tests/integration/test_live_realtime.py`; skipped without both API key and explicit flag; passed with credentials and `SHUVAGENT_RUN_LIVE_REALTIME=1` |
+| Opt-in live Realtime smoke | `tests/integration/test_live_realtime.py`; skipped without both API key and explicit flag; passed with credentials and `SHUVAGENT_RUN_LIVE_REALTIME=1`, including the full default read-only tool round |
 | Realtime wire format | `tests/test_openai_session.py`; live smoke caught and fixed stale beta header/session payload drift; GA output audio and function-call item events are covered |
 | Rate-limit/API error telemetry | `RealtimeApiEvent`; `ConversationApp._stream_api_events()`; `tests/test_openai_session.py`; `tests/test_usage.py` |
 | Audio overflow/status/device error telemetry | `shuvagent/audio/runtime.py`; `audio.device_error`; `tests/test_audio_runtime.py`; `tests/test_session_runner.py` |
