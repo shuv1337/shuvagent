@@ -20,6 +20,7 @@ speaker, and spoken selected-text Q&A acceptance gates pass.
 | Stop handling is bounded | `_SessionRunner.handle_stop()` waits up to 5 seconds before canceling; `ConversationApp.run_streaming()` sends best-effort `response.cancel` before close and emits `realtime.response_cancel_requested` or `realtime.response_cancel_failed`; live first-audio stop drill |
 | 24 kHz mic and speaker path | `_mic_stream()` and `_speaker_playback()` use 24 kHz PCM16 sounddevice streams |
 | First-audio latency | `realtime.first_audio_response_latency_ms`; `tests/integration/test_streaming_loop_with_fake.py` |
+| Playback write telemetry | `audio.playback_chunk` after successful playback writes; `audio.playback_error` on safe write failure; `tests/integration/test_streaming_loop_with_fake.py`; live playback telemetry drill |
 | Duration cap | `_stop_after_duration_cap()`; `tests/test_session_runner.py` |
 | Output token cap | Realtime `max_output_tokens` in `session.update` / `response.create`; `shuvagent/usage.py` backstop; `tests/test_openai_session.py`; `tests/test_usage.py`; `tests/integration/test_streaming_loop_with_fake.py`; live foreground/control mic-path cap drill |
 | Read-only selected text, clipboard, active window, ShuVoice status tools | `shuvagent/tools/builtins/`; `tests/test_builtin_tools.py` |
@@ -51,7 +52,7 @@ speaker, and spoken selected-text Q&A acceptance gates pass.
 | US6 resume after ShuVoice releases mic | verified live | `monitor_shuvoice`; fake tests; live drill emitted `shuvoice.mic_arbitration action=resume reason=shuvoice-released-mic` after ShuVoice returned to `OK idle` |
 | US7 stop ShuVoice TTS before session | verified live | `_SessionRunner._run_session` calls `shuvoice_tts_stop` before constructing the live session and emits `shuvoice.tts_stop_requested`; `tests/test_session_runner.py`; live active-TTS drill saw `OK playing` before start, `shuvoice.tts_stop_requested ok=true` before `agent.session.connected`, and `OK idle` after start |
 | US8 stream mic audio at expected sample rate | partial live | `_mic_stream` uses 24 kHz PCM16; `sounddevice.check_input_settings` passed; live `_mic_stream` yielded a non-empty chunk; spoken mic QA pending |
-| US9 play model audio through default speaker | partial live | `_speaker_playback`; `sounddevice.check_output_settings` passed; live `_speaker_playback` wrote a 20 ms silent PCM buffer; audible speaker QA pending |
+| US9 play model audio through default speaker | partial live | `_speaker_playback`; `sounddevice.check_output_settings` passed; live `_speaker_playback` wrote a 20 ms silent PCM buffer; live model audio emitted `audio.playback_chunk` without `audio.playback_error`; human-audible speaker QA pending |
 | US10 first-audio latency measured | local/fake verified | `realtime.first_audio_response_latency_ms`; streaming fake tests |
 | US11 hard duration cap | verified live | `_stop_after_duration_cap`; `tests/test_session_runner.py`; live 2-second config returned status to idle |
 | US12 output token cap | verified live | config validation, Realtime payload tests, usage tests; live foreground/control mic-path drill with `output_token_cap=1` emitted `agent.session.interrupted reason=output_token_cap` |
@@ -439,6 +440,35 @@ conversation_already_has_active_response=false
 This verifies the control path can stop a session after model audio begins and
 returns to idle inside the 5 second bounded-stop window. It does not replace
 the separate human-audible speaker confirmation gate.
+
+## Additional Live Playback Telemetry Evidence
+
+Foreground/control-socket drill after adding content-free playback telemetry:
+
+```text
+uv run shuvagent --config /tmp/shuvagent-issue1-playback-telemetry-ihDL/config.toml control start
+# OK started session=389649ee76124d789eac53168c7a68a9
+espeak-ng -s 145 'say a short sentence for playback telemetry'
+uv run shuvagent --config /tmp/shuvagent-issue1-playback-telemetry-ihDL/config.toml control stop
+# OK stopped
+uv run shuvagent --config /tmp/shuvagent-issue1-playback-telemetry-ihDL/config.toml control status
+# OK idle
+```
+
+Safe telemetry evidence:
+
+```text
+realtime.first_audio_response_latency_ms
+audio.playback_chunk chunk_bytes=19200
+audio.playback_error=false
+realtime.response_cancel_requested
+agent.session.stopped
+conversation_already_has_active_response=false
+```
+
+This verifies model audio chunks reached the playback sink and returned
+successfully without logging audio bytes. It does not prove the human heard the
+speaker output, so the audible speaker gate remains open.
 
 ## Completion Rule
 
