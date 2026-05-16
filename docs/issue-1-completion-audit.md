@@ -123,6 +123,12 @@ Current result:
 - Gemini/Pipecat live validation is newly required and still needs target
   desktop evidence with `GOOGLE_API_KEY` and
   `models/gemini-3.1-flash-live-preview`.
+- Public Google docs checked during implementation do not prove
+  `models/gemini-3.1-flash-live-preview`: Gemini 3 Flash preview is documented
+  without Live API support, while Live API examples use Gemini 2.5
+  native-audio/live models. Issue #1 therefore requires an actual live smoke
+  with the target `GOOGLE_API_KEY` before treating the requested model as
+  validated.
 
 Current live-smoke evidence:
 
