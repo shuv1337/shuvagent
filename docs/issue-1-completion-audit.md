@@ -40,7 +40,7 @@ spoken selected-text Q&A, and live Gemini/Pipecat acceptance gates pass.
 | Issue #1 live QA helper | `uv run shuvagent issue1-qa`; `shuvagent/live_qa.py`; `tests/test_live_qa.py`; prints remaining closure gates and safe evidence guidance |
 | Config validation for voices/safety caps | `AppConfig.validate()`; `tests/test_config.py` |
 | Example config schema alignment | `examples/config.toml`; `tests/test_config.py::test_example_config_matches_current_schema` |
-| Strict type coverage where stable | `pyproject.toml`; `uv run mypy` over 24 source files, including `shuvagent/app.py`, `shuvagent/cli.py`, `shuvagent/control.py`, and `shuvagent/realtime/openai_session.py` |
+| Strict type coverage where stable | `pyproject.toml`; `uv run mypy` over 31 source files, including `shuvagent/app.py`, `shuvagent/cli.py`, `shuvagent/control.py`, `shuvagent/realtime/openai_session.py`, `shuvagent/realtime/providers.py`, and `shuvagent/realtime/pipecat_gemini_session.py` |
 | Live prerequisite preflight | `uv run shuvagent doctor`; `tests/test_doctor.py` |
 | Manual release checklist | `docs/live-validation-checklist.md` |
 
@@ -86,7 +86,7 @@ spoken selected-text Q&A, and live Gemini/Pipecat acceptance gates pass.
 | US36 lifecycle orchestration isolated from CLI parsing | verified | `_SessionRunner`; control tests |
 | US37 read-only tools use permission gate | verified | `ConversationApp._execute_tool_call`; policy tests |
 | US38 usage/rate-limit fixtures | verified | usage and streaming fake tests |
-| US39 mypy coverage expanded where stable | verified | `uv run mypy` over 23 strict source files |
+| US39 mypy coverage expanded where stable | verified | `uv run mypy` over 31 strict source files |
 | US40 manual QA checklist | verified artifact | `docs/live-validation-checklist.md`; execution pending |
 | US41 OpenAI remains the default provider | local verified | `RealtimeConfig.provider = "openai"`; provider factory tests |
 | US42 Gemini Live provider through Pipecat | source verified, live pending | `PipecatGeminiRealtimeSession` wraps Pipecat `GeminiLiveLLMService`; `GOOGLE_API_KEY`/`models/gemini-3.1-flash-live-preview` live gate pending |
@@ -102,21 +102,20 @@ uv run mypy
 uv run pytest
 uv run shuvagent doctor
 SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q
-GOOGLE_API_KEY=... uv run shuvagent --config <gemini-config> run
+SHUVAGENT_RUN_LIVE_GEMINI=1 GOOGLE_API_KEY=... uv run pytest tests/integration/test_live_gemini.py -q
 ```
 
 Current result:
 
 - `ruff`: pass.
-- `mypy`: pass for 24 strict source files.
+- `mypy`: pass for 31 strict source files.
 - `pytest`: pass with the paid live Realtime tests skipped when the explicit
-  flag is absent (`195 passed, 3 skipped` after the capture/playback telemetry
-  tests).
+  flag is absent (`206 passed, 4 skipped` after the Pipecat/Gemini provider tests).
 - `doctor`: pass with config, safety caps, `$OPENAI_API_KEY`, `sounddevice`,
   `websockets`, `shuvoice`, `wl-paste`, and `hyprctl`.
 - opt-in live Realtime smoke and selected-text tool round trip: pass, not skipped.
-- `uv run shuvagent issue1-qa`: pass; prints doctor preflight, the three
-  remaining target-desktop closure gates, and the expected safe telemetry event
+- `uv run shuvagent issue1-qa`: pass; prints doctor preflight, the four
+  remaining target-desktop/provider closure gates, and the expected safe telemetry event
   names for the final human run.
 - outbound Realtime frames include `max_output_tokens` matching
   `realtime.output_token_cap`.
