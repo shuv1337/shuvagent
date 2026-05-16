@@ -19,6 +19,7 @@ speaker, and spoken selected-text Q&A acceptance gates pass.
 | ShuVoice mid-session pause/resume | `ConversationApp.run_streaming(session_monitors=...)`; `monitor_shuvoice`; `tests/test_coordination.py`; live mid-session recording drill |
 | Stop handling is bounded | `_SessionRunner.handle_stop()` waits up to 5 seconds before canceling; `ConversationApp.run_streaming()` sends best-effort `response.cancel` before close and emits `realtime.response_cancel_requested` or `realtime.response_cancel_failed`; live first-audio stop drill |
 | 24 kHz mic and speaker path | `_mic_stream()` and `_speaker_playback()` use 24 kHz PCM16 sounddevice streams |
+| Capture forwarding telemetry | `audio.capture_chunk` emits once when the first mic chunk is forwarded to Realtime; only `chunk_bytes` is logged; `tests/integration/test_streaming_loop_with_fake.py` |
 | First-audio latency | `realtime.first_audio_response_latency_ms`; `tests/integration/test_streaming_loop_with_fake.py` |
 | Playback write telemetry | `audio.playback_chunk` after successful playback writes; `audio.playback_error` on safe write failure; `tests/integration/test_streaming_loop_with_fake.py`; live playback telemetry drill |
 | Duration cap | `_stop_after_duration_cap()`; `tests/test_session_runner.py` |
@@ -51,7 +52,7 @@ speaker, and spoken selected-text Q&A acceptance gates pass.
 | US5 pause if ShuVoice records mid-session | verified live | `monitor_shuvoice`; fake tests; live drill emitted `shuvoice.mic_arbitration action=pause reason=shuvoice-took-mic` while status was `OK recording` |
 | US6 resume after ShuVoice releases mic | verified live | `monitor_shuvoice`; fake tests; live drill emitted `shuvoice.mic_arbitration action=resume reason=shuvoice-released-mic` after ShuVoice returned to `OK idle` |
 | US7 stop ShuVoice TTS before session | verified live | `_SessionRunner._run_session` calls `shuvoice_tts_stop` before constructing the live session and emits `shuvoice.tts_stop_requested`; `tests/test_session_runner.py`; live active-TTS drill saw `OK playing` before start, `shuvoice.tts_stop_requested ok=true` before `agent.session.connected`, and `OK idle` after start |
-| US8 stream mic audio at expected sample rate | partial live | `_mic_stream` uses 24 kHz PCM16; `sounddevice.check_input_settings` passed; live `_mic_stream` yielded a non-empty chunk; spoken mic QA pending |
+| US8 stream mic audio at expected sample rate | partial live | `_mic_stream` uses 24 kHz PCM16; `sounddevice.check_input_settings` passed; live `_mic_stream` yielded a non-empty chunk; streaming path now emits content-free `audio.capture_chunk`; spoken mic QA pending |
 | US9 play model audio through default speaker | partial live | `_speaker_playback`; `sounddevice.check_output_settings` passed; live `_speaker_playback` wrote a 20 ms silent PCM buffer; live model audio emitted `audio.playback_chunk` without `audio.playback_error`; human-audible speaker QA pending |
 | US10 first-audio latency measured | local/fake verified | `realtime.first_audio_response_latency_ms`; streaming fake tests |
 | US11 hard duration cap | verified live | `_stop_after_duration_cap`; `tests/test_session_runner.py`; live 2-second config returned status to idle |
@@ -103,13 +104,14 @@ Current result:
 - `ruff`: pass.
 - `mypy`: pass for 24 strict source files.
 - `pytest`: pass with the paid live Realtime tests skipped when the explicit
-  flag is absent (`194 passed, 3 skipped` after the Realtime duplicate tool-call
-  regression test).
+  flag is absent (`195 passed, 3 skipped` after the capture/playback telemetry
+  tests).
 - `doctor`: pass with config, safety caps, `$OPENAI_API_KEY`, `sounddevice`,
   `websockets`, `shuvoice`, `wl-paste`, and `hyprctl`.
 - opt-in live Realtime smoke and selected-text tool round trip: pass, not skipped.
-- `uv run shuvagent issue1-qa`: pass; prints doctor preflight and the five
-  remaining target-desktop closure gates.
+- `uv run shuvagent issue1-qa`: pass; prints doctor preflight, the three
+  remaining target-desktop closure gates, and the expected safe telemetry event
+  names for the final human run.
 - outbound Realtime frames include `max_output_tokens` matching
   `realtime.output_token_cap`.
 
@@ -469,6 +471,19 @@ conversation_already_has_active_response=false
 This verifies model audio chunks reached the playback sink and returned
 successfully without logging audio bytes. It does not prove the human heard the
 speaker output, so the audible speaker gate remains open.
+
+## Additional Capture Telemetry Evidence
+
+The streaming path now emits one content-free capture-forwarding event when the
+first microphone chunk is sent to Realtime:
+
+```text
+audio.capture_chunk chunk_bytes=<pcm byte count>
+```
+
+`audio.capture_chunk` is covered by `tests/integration/test_streaming_loop_with_fake.py`
+and is listed by `uv run shuvagent issue1-qa` as expected safe evidence for the
+final human run. It does not log audio bytes or transcripts.
 
 ## Completion Rule
 
