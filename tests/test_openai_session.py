@@ -11,8 +11,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import sys
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
+import shuvagent.realtime.openai_session as openai_session_module
 from shuvagent.realtime.events import SessionState
 from shuvagent.realtime.openai_session import (
     OpenAIRealtimeSession,
@@ -257,6 +260,90 @@ def test_send_tool_result_defers_response_create_until_active_response_done() ->
     asyncio.run(run())
 
 
+def test_reconnect_retries_with_backoff_and_replays_session_update(
+    monkeypatch,
+) -> None:
+    async def run() -> None:
+        sleeps: list[float] = []
+        fake_websockets = FakeWebsockets(failures_before_success=2)
+
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "websockets",
+            SimpleNamespace(connect=fake_websockets.connect),
+        )
+        monkeypatch.setattr(openai_session_module.asyncio, "sleep", fake_sleep)
+
+        session = OpenAIRealtimeSession(_config())
+        session.is_open = True
+
+        assert await session._reconnect_with_backoff(RuntimeError("closed"))
+
+        assert sleeps == [1.0, 2.0, 4.0]
+        assert fake_websockets.attempts == 3
+        assert session.is_open
+        assert session.state == SessionState.READY
+        assert len(fake_websockets.connections) == 1
+        sent = [json.loads(frame) for frame in fake_websockets.connections[0].sent]
+        assert sent[0]["type"] == "session.update"
+
+        events = [await session._api_event_queue.get() for _ in range(4)]
+        assert [event.type for event in events] == [
+            "agent.session.reconnect_attempt",
+            "agent.session.reconnect_attempt",
+            "agent.session.reconnect_attempt",
+            "agent.session.reconnect_succeeded",
+        ]
+        assert [event.payload for event in events[:3]] == [
+            {"attempt": 1, "delay_ms": 1000},
+            {"attempt": 2, "delay_ms": 2000},
+            {"attempt": 3, "delay_ms": 4000},
+        ]
+        assert events[-1].payload == {"attempt": 3}
+
+    asyncio.run(run())
+
+
+def test_reconnect_failure_emits_failed_event_and_closes(
+    monkeypatch,
+) -> None:
+    async def run() -> None:
+        fake_websockets = FakeWebsockets(failures_before_success=99)
+
+        async def fake_sleep(delay: float) -> None:
+            del delay
+
+        monkeypatch.setitem(
+            sys.modules,
+            "websockets",
+            SimpleNamespace(connect=fake_websockets.connect),
+        )
+        monkeypatch.setattr(openai_session_module.asyncio, "sleep", fake_sleep)
+
+        session = OpenAIRealtimeSession(_config())
+        session.is_open = True
+
+        assert not await session._reconnect_with_backoff(RuntimeError("closed"))
+
+        assert fake_websockets.attempts == 3
+        assert not session.is_open
+        assert session.state == SessionState.CLOSED
+        events = [await session._api_event_queue.get() for _ in range(4)]
+        assert [event.type for event in events] == [
+            "agent.session.reconnect_attempt",
+            "agent.session.reconnect_attempt",
+            "agent.session.reconnect_attempt",
+            "agent.session.reconnect_failed",
+        ]
+        assert events[-1].payload["attempts"] == 3
+        assert "connect failed" in str(events[-1].payload["error"])
+
+    asyncio.run(run())
+
+
 def test_window_unused_in_session_payload() -> None:
     # Sanity: WindowSnapshot is not part of session.update — just here to
     # keep imports honest if future changes regress.
@@ -264,3 +351,37 @@ def test_window_unused_in_session_payload() -> None:
         "S", (), {"app_id": "x", "title": "t", "captured_at": datetime.now(UTC)}
     )
     del snap
+
+
+class FakeWebsockets:
+    def __init__(self, *, failures_before_success: int) -> None:
+        self.failures_before_success = failures_before_success
+        self.attempts = 0
+        self.connections: list[FakeWebSocket] = []
+
+    async def connect(
+        self,
+        url: str,
+        *,
+        additional_headers: list[tuple[str, str]],
+    ) -> FakeWebSocket:
+        assert url.endswith("?model=gpt-realtime-2")
+        assert additional_headers == [("Authorization", "Bearer sk-test")]
+        self.attempts += 1
+        if self.attempts <= self.failures_before_success:
+            raise RuntimeError(f"connect failed {self.attempts}")
+        ws = FakeWebSocket()
+        self.connections.append(ws)
+        return ws
+
+
+class FakeWebSocket:
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+        self.closed = False
+
+    async def send(self, frame: str) -> None:
+        self.sent.append(frame)
+
+    async def close(self) -> None:
+        self.closed = True

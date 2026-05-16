@@ -284,6 +284,65 @@ def test_run_streaming_emits_rate_limit_telemetry() -> None:
     asyncio.run(run())
 
 
+def test_run_streaming_forwards_reconnect_telemetry_and_stops_on_failure() -> None:
+    async def run() -> None:
+        session = FakeRealtimeSession([ScriptedTurn(user_audio=b"hello")])
+        registry = ToolRegistry(window_snapshot=_window)
+        gate = PermissionGate(registry.specs(), window_snapshot=_window)
+        app = ConversationApp(session=session, registry=registry, gate=gate)
+
+        stop_event = asyncio.Event()
+        events: list[tuple[str, dict[str, object]]] = []
+
+        async def playback(chunk: bytes) -> None:
+            del chunk
+
+        async def mic() -> AsyncIterator[bytes]:
+            yield b"hello"
+            await session.emit_api_event(
+                RealtimeApiEvent(
+                    "agent.session.reconnect_attempt",
+                    {"attempt": 1, "delay_ms": 1000},
+                )
+            )
+            await session.emit_api_event(
+                RealtimeApiEvent(
+                    "agent.session.reconnect_succeeded",
+                    {"attempt": 1},
+                )
+            )
+            await session.emit_api_event(
+                RealtimeApiEvent(
+                    "agent.session.reconnect_failed",
+                    {"attempts": 3, "error": "closed"},
+                )
+            )
+            await asyncio.sleep(0.05)
+
+        await app.run_streaming(
+            audio_in=mic(),
+            playback=playback,
+            stop_event=stop_event,
+            event_sink=lambda ev: events.append((ev.event, ev.attributes)),
+        )
+
+        assert (
+            "agent.session.reconnect_attempt",
+            {"attempt": 1, "delay_ms": 1000},
+        ) in events
+        assert (
+            "agent.session.reconnect_succeeded",
+            {"attempt": 1},
+        ) in events
+        assert (
+            "agent.session.reconnect_failed",
+            {"attempts": 3, "error": "closed"},
+        ) in events
+        assert stop_event.is_set()
+
+    asyncio.run(run())
+
+
 def test_run_streaming_emits_realtime_error_and_stops() -> None:
     async def run() -> None:
         session = FakeRealtimeSession([ScriptedTurn(user_audio=b"hello")])

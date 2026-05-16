@@ -103,6 +103,12 @@ class OpenAIRealtimeSession:
     # ------------------------------------------------------------------
     async def connect(self) -> None:
         self.state = SessionState.CONNECTING
+        await self._connect_websocket()
+        self.is_open = True
+        self.state = SessionState.READY
+        self._reader_task = asyncio.create_task(self._read_loop())
+
+    async def _connect_websocket(self) -> None:
         try:
             import websockets
         except ImportError as exc:  # pragma: no cover - import guard
@@ -118,9 +124,6 @@ class OpenAIRealtimeSession:
             timeout=self.config.request_timeout_sec,
         )
         await self._ws.send(json.dumps(self._session_update_payload()))
-        self.is_open = True
-        self.state = SessionState.READY
-        self._reader_task = asyncio.create_task(self._read_loop())
 
     async def send_audio(self, pcm16: bytes) -> None:
         self._require_open()
@@ -258,19 +261,79 @@ class OpenAIRealtimeSession:
         self._response_active = True
 
     async def _read_loop(self) -> None:
-        assert self._ws is not None
-        try:
-            async for raw in self._ws:
-                if isinstance(raw, bytes):
-                    # Realtime API uses text frames; ignore stray binary.
+        while self.is_open:
+            ws = self._ws
+            if ws is None:
+                return
+            try:
+                async for raw in ws:
+                    if isinstance(raw, bytes):
+                        # Realtime API uses text frames; ignore stray binary.
+                        continue
+                    await self._handle_event(json.loads(raw))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover - network failure
+                if not self.is_open:
+                    return
+                if await self._reconnect_with_backoff(exc):
                     continue
-                await self._handle_event(json.loads(raw))
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # pragma: no cover - network failure
-            await self._error_queue.put(
-                RealtimeError("ws_read_error", str(exc))
+                await self._error_queue.put(
+                    RealtimeError("ws_read_error", str(exc))
+                )
+                return
+            if not self.is_open:
+                return
+            if not await self._reconnect_with_backoff(
+                RuntimeError("websocket closed")
+            ):
+                await self._error_queue.put(
+                    RealtimeError("ws_read_error", "websocket closed")
+                )
+                return
+
+    async def _reconnect_with_backoff(self, cause: Exception) -> bool:
+        delays = (1.0, 2.0, 4.0)
+        last_error: Exception = cause
+        for attempt, delay in enumerate(delays, start=1):
+            await self._api_event_queue.put(
+                RealtimeApiEvent(
+                    "agent.session.reconnect_attempt",
+                    {"attempt": attempt, "delay_ms": int(delay * 1000)},
+                )
             )
+            await asyncio.sleep(delay)
+            try:
+                if self._ws is not None:
+                    try:
+                        await self._ws.close()
+                    except Exception:
+                        pass
+                self.state = SessionState.CONNECTING
+                self._response_active = False
+                self._response_after_active_done = False
+                await self._connect_websocket()
+            except Exception as exc:  # pragma: no cover - network retry path
+                last_error = exc
+                continue
+            self.is_open = True
+            self.state = SessionState.READY
+            await self._api_event_queue.put(
+                RealtimeApiEvent(
+                    "agent.session.reconnect_succeeded",
+                    {"attempt": attempt},
+                )
+            )
+            return True
+        self.is_open = False
+        self.state = SessionState.CLOSED
+        await self._api_event_queue.put(
+            RealtimeApiEvent(
+                "agent.session.reconnect_failed",
+                {"attempts": len(delays), "error": str(last_error)},
+            )
+        )
+        return False
 
     async def _handle_event(self, event: Mapping[str, Any]) -> None:
         etype = event.get("type", "")

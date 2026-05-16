@@ -266,6 +266,15 @@ class ConversationApp:
         usage_tracker: UsageTracker | None,
     ) -> None:
         async for event in self._session.api_events:
+            if event.type in {
+                "agent.session.reconnect_attempt",
+                "agent.session.reconnect_succeeded",
+                "agent.session.reconnect_failed",
+            }:
+                emit(TelemetryEvent(event=event.type, attributes=event.payload))
+                if event.type == "agent.session.reconnect_failed":
+                    stop_event.set()
+                continue
             if event.type == "rate_limits.updated":
                 for limit in parse_rate_limits(event.payload):
                     emit(
