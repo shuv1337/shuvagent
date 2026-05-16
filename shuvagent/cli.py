@@ -9,13 +9,13 @@ from pathlib import Path
 from shuvagent.app import ConversationApp
 from shuvagent.config import AppConfig, load_config
 from shuvagent.control import ControlServer, send_control_command
+from shuvagent.coordination import monitor_shuvoice
 from shuvagent.env_loader import load_env_file
 from shuvagent.paths import default_local_env_path
 from shuvagent.realtime.openai_session import (
     OpenAIRealtimeSession,
     OpenAISessionConfig,
 )
-from shuvagent.realtime.session import RealtimeAgentSession
 from shuvagent.telemetry.schema import TelemetryEvent
 from shuvagent.telemetry.sink import JsonLineSink
 from shuvagent.tools.builtins import default_read_only_tools
@@ -166,7 +166,7 @@ class _SessionRunner:
             registry.register(spec)
         gate = PermissionGate(registry.specs(), window_snapshot=get_active_window)
 
-        session: RealtimeAgentSession = OpenAIRealtimeSession(
+        session = OpenAIRealtimeSession(
             OpenAISessionConfig(
                 api_key=self._api_key,
                 model=self._config.realtime.model,
@@ -176,14 +176,26 @@ class _SessionRunner:
                 request_timeout_sec=self._config.realtime.request_timeout_sec,
             )
         )
-        app = ConversationApp(session=session, registry=registry, gate=gate)
+        app = ConversationApp(
+            session=session, registry=registry, gate=gate
+        )
 
+        duration_task = asyncio.create_task(
+            self._stop_after_duration_cap(stop_event)
+        )
         try:
             await app.run_streaming(
                 audio_in=_mic_stream(stop_event, self._config),
                 playback=_speaker_playback(self._config),
                 stop_event=stop_event,
                 event_sink=self._sink.emit,
+                session_monitors=[
+                    lambda: monitor_shuvoice(
+                        session,
+                        interval_sec=self._config.coordination.shuvoice_status_poll_sec,
+                        timeout=self._config.coordination.shuvoice_control_timeout_sec,
+                    )
+                ],
             )
         except Exception as exc:  # pragma: no cover - runtime failure path
             self._sink.emit(
@@ -193,6 +205,24 @@ class _SessionRunner:
                     attributes={"error": str(exc)},
                 )
             )
+        finally:
+            duration_task.cancel()
+            await asyncio.gather(duration_task, return_exceptions=True)
+
+    async def _stop_after_duration_cap(self, stop_event: asyncio.Event) -> None:
+        await asyncio.sleep(self._config.realtime.session_max_duration_sec)
+        if stop_event.is_set():
+            return
+        self._sink.emit(
+            TelemetryEvent(
+                event="agent.session.interrupted",
+                attributes={
+                    "reason": "duration_cap",
+                    "duration_cap_sec": self._config.realtime.session_max_duration_sec,
+                },
+            )
+        )
+        stop_event.set()
 
 
 def _speaker_playback(config: AppConfig):

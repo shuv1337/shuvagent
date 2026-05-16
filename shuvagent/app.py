@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 
 from shuvagent.realtime.session import RealtimeAgentSession
@@ -85,6 +86,7 @@ class ConversationApp:
         playback: PlaybackSink,
         stop_event: asyncio.Event,
         event_sink: EventSink | None = None,
+        session_monitors: Iterable[Callable[[], Awaitable[None]]] = (),
     ) -> None:
         """Drive a live conversation session until ``stop_event`` is set.
 
@@ -94,11 +96,13 @@ class ConversationApp:
         """
         emit = event_sink or (lambda _ev: None)
         emit(TelemetryEvent(event="agent.session.start_requested"))
+        start_time = time.monotonic()
         await self._session.connect()
         emit(TelemetryEvent(event="agent.session.connected"))
 
+        monitor_tasks = [asyncio.create_task(monitor()) for monitor in session_monitors]
         audio_out_task = asyncio.create_task(
-            self._stream_audio_out(playback, emit)
+            self._stream_audio_out(playback, emit, session_start_time=start_time)
         )
         tool_task = asyncio.create_task(self._stream_tool_calls(emit))
         send_task = asyncio.create_task(
@@ -114,13 +118,15 @@ class ConversationApp:
             del done
         finally:
             stop_event.set()
-            for task in (send_task, audio_out_task, tool_task, stop_task):
+            tasks = (send_task, audio_out_task, tool_task, stop_task, *monitor_tasks)
+            for task in tasks:
                 task.cancel()
             await asyncio.gather(
                 send_task,
                 audio_out_task,
                 tool_task,
                 stop_task,
+                *monitor_tasks,
                 return_exceptions=True,
             )
             await self._session.close()
@@ -139,10 +145,26 @@ class ConversationApp:
             await self._session.send_audio(chunk)
 
     async def _stream_audio_out(
-        self, playback: PlaybackSink, emit: EventSink
+        self,
+        playback: PlaybackSink,
+        emit: EventSink,
+        *,
+        session_start_time: float,
     ) -> None:
-        del emit
+        first_audio = True
         async for chunk in self._session.audio_out:
+            if first_audio:
+                first_audio = False
+                emit(
+                    TelemetryEvent(
+                        event="realtime.first_audio_response_latency_ms",
+                        attributes={
+                            "latency_ms": round(
+                                (time.monotonic() - session_start_time) * 1000, 2
+                            )
+                        },
+                    )
+                )
             await playback(chunk)
 
     async def _stream_tool_calls(self, emit: EventSink) -> None:

@@ -51,11 +51,17 @@ def test_run_streaming_drives_one_turn_then_stops() -> None:
         app = ConversationApp(session=session, registry=registry, gate=gate)
 
         stop_event = asyncio.Event()
+        monitor_ran = asyncio.Event()
         played: list[bytes] = []
         events: list[str] = []
 
         async def playback(chunk: bytes) -> None:
             played.append(chunk)
+
+        async def monitor() -> None:
+            assert session.is_open
+            monitor_ran.set()
+            await stop_event.wait()
 
         async def mic_then_commit() -> AsyncIterator[bytes]:
             yield b"hello"
@@ -69,8 +75,10 @@ def test_run_streaming_drives_one_turn_then_stops() -> None:
             playback=playback,
             stop_event=stop_event,
             event_sink=lambda ev: events.append(ev.event),
+            session_monitors=[monitor],
         )
 
+        assert monitor_ran.is_set()
         assert played == [b"spoken"]
         assert session.tool_results == [
             (
@@ -80,6 +88,7 @@ def test_run_streaming_drives_one_turn_then_stops() -> None:
         ]
         assert "agent.session.start_requested" in events
         assert "agent.session.connected" in events
+        assert "realtime.first_audio_response_latency_ms" in events
         assert "tool.requested" in events
         assert "tool.executed" in events
         assert "agent.session.stopped" in events
