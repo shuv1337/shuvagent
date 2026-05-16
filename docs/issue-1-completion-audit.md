@@ -29,6 +29,7 @@ arbitration QA pass.
 | Realtime wire format | `tests/test_openai_session.py`; live smoke caught and fixed stale beta header/session payload drift; GA output audio and function-call item events are covered |
 | Rate-limit/API error telemetry | `RealtimeApiEvent`; `ConversationApp._stream_api_events()`; `tests/test_openai_session.py`; `tests/test_usage.py` |
 | Audio overflow/status/device error telemetry | `shuvagent/audio/runtime.py`; `audio.device_error`; `tests/test_audio_runtime.py`; `tests/test_session_runner.py` |
+| Stderr lifecycle status indicator | `_SessionRunner` status writer; `tests/test_cli.py`; `tests/test_session_runner.py` |
 | Config validation for voices/safety caps | `AppConfig.validate()`; `tests/test_config.py` |
 | Example config schema alignment | `examples/config.toml`; `tests/test_config.py::test_example_config_matches_current_schema` |
 | Strict type coverage where stable | `pyproject.toml`; `uv run mypy` over 23 source files, including `shuvagent/app.py`, `shuvagent/cli.py`, `shuvagent/control.py`, and `shuvagent/realtime/openai_session.py` |

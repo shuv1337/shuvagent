@@ -96,15 +96,51 @@ def test_session_start_requests_shuvoice_tts_stop(monkeypatch) -> None:
 
 def test_shuvoice_arbitration_emits_safe_telemetry() -> None:
     sink = MemorySink()
-    runner = _SessionRunner(config=AppConfig(), api_key="sk-test", sink=sink)
+    statuses: list[str] = []
+    runner = _SessionRunner(
+        config=AppConfig(),
+        api_key="sk-test",
+        sink=sink,
+        status_writer=statuses.append,
+    )
 
     runner._emit_shuvoice_arbitration("pause", "shuvoice-took-mic")
+    runner._emit_shuvoice_arbitration("resume", "shuvoice-released-mic")
 
-    assert sink.events[-1].event == "shuvoice.mic_arbitration"
-    assert sink.events[-1].attributes == {
+    assert sink.events[0].event == "shuvoice.mic_arbitration"
+    assert sink.events[0].attributes == {
         "action": "pause",
         "reason": "shuvoice-took-mic",
     }
+    assert sink.events[1].attributes == {
+        "action": "resume",
+        "reason": "shuvoice-released-mic",
+    }
+    assert statuses == [
+        "[shuvagent] Session paused: shuvoice-took-mic",
+        "[shuvagent] Session resumed: shuvoice-released-mic",
+    ]
+
+
+def test_session_interruption_emits_status_line() -> None:
+    sink = MemorySink()
+    statuses: list[str] = []
+    runner = _SessionRunner(
+        config=AppConfig(),
+        api_key="sk-test",
+        sink=sink,
+        status_writer=statuses.append,
+    )
+
+    runner._emit_session_event(
+        TelemetryEvent(
+            event="agent.session.interrupted",
+            attributes={"reason": "output_token_cap"},
+        )
+    )
+
+    assert sink.events[-1].event == "agent.session.interrupted"
+    assert statuses == ["[shuvagent] Session stopped: output_token_cap"]
 
 
 def test_mic_stream_releases_device_on_pause_and_restarts_on_resume(

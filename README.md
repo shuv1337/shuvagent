@@ -23,6 +23,8 @@ Foundation work is implemented through the first conversational slices:
 - redacted telemetry for session duration, first model audio latency, API errors,
   rate limits, token usage, ShuVoice mic arbitration, and audio capture/device
   problems
+- simple stderr lifecycle status lines for session start, pause, resume, and
+  stop reasons
 
 Source-level hardening is implemented and the opt-in live Realtime smoke has
 passed locally with credentials. Manual microphone/speaker and ShuVoice

@@ -83,17 +83,20 @@ def test_start_decision_denies_missing_key_from_cli_surface() -> None:
 def test_session_runner_start_stop_and_shutdown_are_idempotent() -> None:
     async def run() -> None:
         sink = MemorySink()
-        runner = _SessionRunner(config=AppConfig(), api_key="sk-test", sink=sink)
+        statuses: list[str] = []
+        runner = _SessionRunner(
+            config=AppConfig(),
+            api_key="sk-test",
+            sink=sink,
+            status_writer=statuses.append,
+        )
         finished: list[str] = []
 
-        async def fake_run_session_until_finished(
-            session_id: str,
-            stop_event: asyncio.Event,
-        ) -> None:
+        async def fake_run_session(stop_event: asyncio.Event) -> None:
             await stop_event.wait()
-            finished.append(session_id)
+            finished.append(runner._session_id or "")
 
-        runner._run_session_until_finished = fake_run_session_until_finished
+        runner._run_session = fake_run_session
 
         await runner.handle_start("session-1")
         await runner.handle_start("session-ignored")
@@ -108,6 +111,10 @@ def test_session_runner_start_stop_and_shutdown_are_idempotent() -> None:
         assert runner._task is None
         assert runner._stop_event is None
         assert runner._session_id is None
+        assert statuses == [
+            "[shuvagent] Session started: control start",
+            "[shuvagent] Session stopped: session ended",
+        ]
 
     asyncio.run(run())
 

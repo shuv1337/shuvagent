@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Protocol, cast
@@ -169,10 +170,12 @@ class _SessionRunner:
         config: AppConfig,
         api_key: str | None,
         sink: _TelemetrySink,
+        status_writer: Callable[[str], None] | None = None,
     ) -> None:
         self._config = config
         self._api_key = api_key
         self._sink = sink
+        self._status_writer = status_writer or _stderr_status
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
         self._session_id: str | None = None
@@ -186,6 +189,7 @@ class _SessionRunner:
         self._task = asyncio.create_task(
             self._run_session_until_finished(session_id, self._stop_event)
         )
+        self._emit_status("started", "control start")
 
     async def handle_stop(self, session_id: str) -> None:
         del session_id
@@ -216,6 +220,7 @@ class _SessionRunner:
                 self._stop_event = None
                 if self.on_session_finished is not None:
                     self.on_session_finished(session_id)
+                self._emit_status("stopped", "session ended")
 
     async def _run_session(self, stop_event: asyncio.Event) -> None:
         if self._api_key is None:
@@ -264,7 +269,7 @@ class _SessionRunner:
                 ),
                 playback=_speaker_playback(self._config),
                 stop_event=stop_event,
-                event_sink=self._sink.emit,
+                event_sink=self._emit_session_event,
                 usage_tracker=UsageTracker(
                     output_token_cap=self._config.realtime.output_token_cap
                 ),
@@ -322,12 +327,25 @@ class _SessionRunner:
                 attributes={"action": action, "reason": reason},
             )
         )
+        if action == "pause":
+            self._emit_status("paused", reason)
+        elif action == "resume":
+            self._emit_status("resumed", reason)
+
+    def _emit_session_event(self, event: TelemetryEvent) -> None:
+        self._sink.emit(event)
+        if event.event == "agent.session.interrupted":
+            reason = str(event.attributes.get("reason", "interrupted"))
+            self._emit_status("stopped", reason)
+
+    def _emit_status(self, state: str, reason: str) -> None:
+        self._status_writer(f"[shuvagent] Session {state}: {reason}")
 
     async def _stop_after_duration_cap(self, stop_event: asyncio.Event) -> None:
         await asyncio.sleep(self._config.realtime.session_max_duration_sec)
         if stop_event.is_set():
             return
-        self._sink.emit(
+        self._emit_session_event(
             TelemetryEvent(
                 event="agent.session.interrupted",
                 attributes={
@@ -369,6 +387,10 @@ def _speaker_playback(config: AppConfig) -> Callable[[bytes], Awaitable[None]]:
             raise audio_runtime_error("audio_playback_write_error", exc) from exc
 
     return play
+
+
+def _stderr_status(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 class _CapturePauseController:

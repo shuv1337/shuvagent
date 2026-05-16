@@ -65,6 +65,8 @@ the read-only voice session enough for live validation.
     not in the default live read-only tool set yet; tests cover default denial,
     confirmation-required paths, focus invalidation for visible writes, command
     execution with fakes, and redaction-safe result summaries.
+  - `_SessionRunner` prints concise lifecycle status lines to stderr:
+    session started, paused, resumed, and stopped with a safe reason.
 - **Live verified:** `shuvagent doctor`, the opt-in live Realtime WebSocket
   smoke, synthetic selected-text tool round trip with model audio bytes,
   foreground `shuvagent run`, and control-socket
@@ -74,7 +76,7 @@ the read-only voice session enough for live validation.
 
 ## Validation status
 - `uv run ruff check .` — clean.
-- `uv run pytest` — **112 passed, 3 skipped** (paid live Realtime tests skipped
+- `uv run pytest` — **119 passed, 3 skipped** (paid live Realtime tests skipped
   in the normal suite).
 - `uv run mypy` — clean (23 strict source files).
 - `uv run shuvagent doctor` — pass with `$OPENAI_API_KEY` set and all desktop
