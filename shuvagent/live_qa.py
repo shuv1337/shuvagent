@@ -6,7 +6,6 @@ ISSUE1_CLOSURE_GATES: tuple[str, ...] = (
     "Spoken microphone input through `shuvagent run` + `shuvagent control start`.",
     "Audible model speech through the default speaker.",
     "Spoken selected-text Q&A using real `wl-paste --primary` selected text.",
-    "`shuvagent control stop` interrupts active model speech promptly.",
 )
 
 

@@ -6,7 +6,7 @@ Status: source hardening, local validation, live OpenAI Realtime smoke,
 foreground/control-socket live smoke, ShuVoice arbitration drills, and the
 foreground microphone-path `output_token_cap = 1` drill are complete. The issue
 is not release-complete until the remaining human/hardware-driven microphone,
-speaker, spoken selected-text Q&A, and active-speech stop acceptance gates pass.
+speaker, and spoken selected-text Q&A acceptance gates pass.
 
 ## Local Evidence
 
@@ -17,7 +17,7 @@ speaker, spoken selected-text Q&A, and active-speech stop acceptance gates pass.
 | Background session cleanup | `ControlServer.finish_session()` returns status to idle when the background session exits; `tests/test_control_socket.py` |
 | ShuVoice pre-start denial | `shuvagent/coordination.py`; `tests/test_coordination.py`; live `shuvoice control start` recording drill |
 | ShuVoice mid-session pause/resume | `ConversationApp.run_streaming(session_monitors=...)`; `monitor_shuvoice`; `tests/test_coordination.py`; live mid-session recording drill |
-| Stop handling is bounded | `_SessionRunner.handle_stop()` waits up to 5 seconds before canceling; `ConversationApp.run_streaming()` sends best-effort `response.cancel` before close and emits `realtime.response_cancel_requested` or `realtime.response_cancel_failed` |
+| Stop handling is bounded | `_SessionRunner.handle_stop()` waits up to 5 seconds before canceling; `ConversationApp.run_streaming()` sends best-effort `response.cancel` before close and emits `realtime.response_cancel_requested` or `realtime.response_cancel_failed`; live first-audio stop drill |
 | 24 kHz mic and speaker path | `_mic_stream()` and `_speaker_playback()` use 24 kHz PCM16 sounddevice streams |
 | First-audio latency | `realtime.first_audio_response_latency_ms`; `tests/integration/test_streaming_loop_with_fake.py` |
 | Duration cap | `_stop_after_duration_cap()`; `tests/test_session_runner.py` |
@@ -45,7 +45,7 @@ speaker, spoken selected-text Q&A, and active-speech stop acceptance gates pass.
 |---|---:|---|
 | US1 `shuvagent run` foreground process | verified live | foreground smoke printed socket path and ready state |
 | US2 `shuvagent control start` opens live session | verified live | `OK started session=...`; telemetry `agent.session.connected` |
-| US3 `shuvagent control stop` stops session | verified live | `OK stopped`; final `OK idle`; cancel telemetry emitted |
+| US3 `shuvagent control stop` stops session | verified live | `OK stopped`; final `OK idle`; cancel telemetry emitted; first-audio stop drill returned within the bounded stop window |
 | US4 refuse start while ShuVoice records | verified live | `coordination.can_start_agent_session`; `tests/test_coordination.py`; live ShuVoice recording drill returned `ERROR start denied: shuvoice-recording` and shuvagent status stayed `OK idle` |
 | US5 pause if ShuVoice records mid-session | verified live | `monitor_shuvoice`; fake tests; live drill emitted `shuvoice.mic_arbitration action=pause reason=shuvoice-took-mic` while status was `OK recording` |
 | US6 resume after ShuVoice releases mic | verified live | `monitor_shuvoice`; fake tests; live drill emitted `shuvoice.mic_arbitration action=resume reason=shuvoice-released-mic` after ShuVoice returned to `OK idle` |
@@ -65,7 +65,7 @@ speaker, spoken selected-text Q&A, and active-speech stop acceptance gates pass.
 | US20 live smoke opens/closes WebSocket | verified live | `tests/integration/test_live_realtime.py` passed with credentials |
 | US21 fake-session streaming coverage | local verified | `tests/integration/test_streaming_loop_with_fake.py` |
 | US22 monitor tasks start after connect/cancel on shutdown | local verified | streaming fake monitor tests |
-| US23 graceful bounded stop handling | live/local verified | live control stop; 5s bounded stop code path |
+| US23 graceful bounded stop handling | live/local verified | live control stop; 5s bounded stop code path; first-audio active-speech stop drill |
 | US24 audio overflow telemetry | local verified | `shuvagent/audio/runtime.py`; `tests/test_audio_runtime.py` |
 | US25 audio device error telemetry | local verified | `AudioRuntimeError`; `tests/test_session_runner.py` |
 | US26 Realtime rate-limit telemetry | local verified | `rate_limits.updated` parser/streaming tests |
@@ -203,7 +203,6 @@ unit/fake-session evidence or direct API injection alone:
    desktop.
 2. Selected-text Q&A end-to-end by spoken microphone prompt with real
    `wl-paste` selected text.
-3. Prompt `control stop` behavior during active model speech.
 
 ## Additional Live ShuVoice Pre-Start Evidence
 
@@ -407,6 +406,39 @@ This verifies the microphone-path selected-text tool round trip with synthetic
 text and no raw selected-text telemetry leakage. The remaining selected-text
 gate is specifically human-spoken Q&A with real selected text and audible
 answer confirmation.
+
+## Additional Live Active-Speech Stop Evidence
+
+Foreground/control-socket drill that waited for first model audio before
+issuing stop:
+
+```text
+uv run shuvagent --config /tmp/shuvagent-issue1-stop-speech-w5l8/config.toml control start
+# OK started session=3244aa979a8f4f6ba9b649be7a389b99
+espeak-ng -s 145 'please tell me a long answer about why live stop testing matters'
+uv run shuvagent --config /tmp/shuvagent-issue1-stop-speech-w5l8/config.toml control stop
+# OK stopped
+uv run shuvagent --config /tmp/shuvagent-issue1-stop-speech-w5l8/config.toml control status
+# OK idle
+```
+
+Safe telemetry evidence:
+
+```text
+realtime.first_audio_response_latency_ms
+realtime.usage
+audio.capture_stop reason=stop
+agent.session.duration_ms
+realtime.usage.summary
+realtime.response_cancel_requested
+agent.session.stopped
+stop command duration: 4670 ms
+conversation_already_has_active_response=false
+```
+
+This verifies the control path can stop a session after model audio begins and
+returns to idle inside the 5 second bounded-stop window. It does not replace
+the separate human-audible speaker confirmation gate.
 
 ## Completion Rule
 
