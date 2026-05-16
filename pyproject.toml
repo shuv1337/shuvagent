@@ -38,3 +38,8 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.12"
 strict = true
 files = ["shuvagent/tools", "shuvagent/selection.py", "shuvagent/window.py"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: integration tests, including opt-in live external service smokes",
+]
