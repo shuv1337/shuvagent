@@ -37,7 +37,18 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["shuvagent/tools", "shuvagent/selection.py", "shuvagent/window.py"]
+files = [
+    "shuvagent/audio/runtime.py",
+    "shuvagent/app.py",
+    "shuvagent/cli.py",
+    "shuvagent/control.py",
+    "shuvagent/doctor.py",
+    "shuvagent/realtime/openai_session.py",
+    "shuvagent/tools",
+    "shuvagent/selection.py",
+    "shuvagent/usage.py",
+    "shuvagent/window.py",
+]
 
 [tool.pytest.ini_options]
 markers = [

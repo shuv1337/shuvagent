@@ -180,7 +180,7 @@ The single arbitration rule is **ShuVoice always wins**.
 ```python
 # shuvagent/coordination.py
 def can_start_agent_session(control_path: Path = SHUVOICE_CONTROL) -> Decision:
-    status = shuvoice_status(control_path, timeout=0.5)
+    status = shuvoice_status(control_path, timeout=2.0)
     if status is None:
         # ShuVoice not running — agent free to start
         return Decision.allow(reason="shuvoice-not-running")
@@ -270,7 +270,7 @@ socket = ""                              # empty = XDG_RUNTIME_DIR/shuvagent/con
 
 [coordination]
 shuvoice_status_poll_sec = 1.0
-shuvoice_control_timeout_sec = 0.5
+shuvoice_control_timeout_sec = 2.0
 
 [ui]
 show_overlay = false                     # M-late; CLI status in v1
@@ -588,19 +588,27 @@ class RealtimeAgentSession(Protocol):
 {
   "type": "session.update",
   "session": {
+    "type": "realtime",
     "model": "gpt-realtime-2",
-    "voice": "marin",
-    "modalities": ["audio", "text"],
+    "output_modalities": ["audio"],
     "instructions": "You are a desktop voice assistant. Be concise. ...",
-    "input_audio_format": "pcm16",
-    "output_audio_format": "pcm16",
-    "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
-    "turn_detection": {"type": "server_vad", "create_response": true, "interrupt_response": true},
+    "audio": {
+      "input": {
+        "format": {"type": "audio/pcm", "rate": 24000},
+        "transcription": {"model": "gpt-4o-mini-transcribe"},
+        "turn_detection": {"type": "server_vad", "create_response": true, "interrupt_response": true}
+      },
+      "output": {
+        "format": {"type": "audio/pcm", "rate": 24000},
+        "voice": "marin"
+      }
+    },
     "tools": [
       {"type": "function", "name": "get_selected_text", "description": "...", "parameters": {...}},
       // ... other read tools ...
     ],
-    "tool_choice": "auto"
+    "tool_choice": "auto",
+    "max_output_tokens": 800
   }
 }
 ```
@@ -644,8 +652,9 @@ session is the biggest cost risk.
   `agent.session.stopped` with `reason="duration_cap"`. User must
   re-bind `start` to continue.
 - **Token-budget kill-switch (M1.6):** if cumulative `audio_output_tokens`
-  for a session exceeds `realtime.session_max_output_tokens` (default
-  20_000 ≈ ~$1.30), session closes immediately. Configurable in
+  for a session exceeds `realtime.output_token_cap` (default 800), session
+  closes immediately. The same value is also sent as Realtime
+  `max_output_tokens` for each response. Configurable in
   `~/.config/shuvagent/config.toml`.
 - **Rate-limit handling:** OpenAI rate-limit error events surface as
   `realtime.rate_limit` telemetry; session closes; user notified via

@@ -30,6 +30,7 @@ class RealtimeConfig:
     voice: str = "marin"
     reasoning_effort: str = "low"
     session_max_duration_sec: int = 300
+    output_token_cap: int = 800
     request_timeout_sec: float = 10.0
 
 
@@ -49,7 +50,7 @@ class ControlConfig:
 @dataclass(frozen=True)
 class CoordinationConfig:
     shuvoice_status_poll_sec: float = 1.0
-    shuvoice_control_timeout_sec: float = 0.5
+    shuvoice_control_timeout_sec: float = 2.0
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,22 @@ class AppConfig:
             )
         if self.realtime.reasoning_effort not in {"low", "medium", "high"}:
             raise ValueError("realtime.reasoning_effort must be low, medium, or high")
+        if self.realtime.session_max_duration_sec <= 0:
+            raise ValueError("realtime.session_max_duration_sec must be greater than 0")
+        if self.realtime.output_token_cap <= 0:
+            raise ValueError("realtime.output_token_cap must be greater than 0")
+        if self.realtime.output_token_cap > 4096:
+            raise ValueError("realtime.output_token_cap must be 4096 or less")
+        if self.realtime.request_timeout_sec <= 0:
+            raise ValueError("realtime.request_timeout_sec must be greater than 0")
+        if self.coordination.shuvoice_status_poll_sec <= 0:
+            raise ValueError(
+                "coordination.shuvoice_status_poll_sec must be greater than 0"
+            )
+        if self.coordination.shuvoice_control_timeout_sec <= 0:
+            raise ValueError(
+                "coordination.shuvoice_control_timeout_sec must be greater than 0"
+            )
         if self.telemetry.sink not in {"stdout", "file", "maple"}:
             raise ValueError("telemetry.sink must be stdout, file, or maple")
 

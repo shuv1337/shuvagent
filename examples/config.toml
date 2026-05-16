@@ -6,6 +6,7 @@ api_key_env = "OPENAI_API_KEY"
 voice = "marin"
 reasoning_effort = "low"
 session_max_duration_sec = 300
+output_token_cap = 800
 request_timeout_sec = 10.0
 
 [audio]
@@ -19,7 +20,7 @@ socket = ""
 
 [coordination]
 shuvoice_status_poll_sec = 1.0
-shuvoice_control_timeout_sec = 0.5
+shuvoice_control_timeout_sec = 2.0
 
 [ui]
 show_overlay = false

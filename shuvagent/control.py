@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,6 +59,7 @@ class ControlServer:
             await self._server.serve_forever()
 
     async def handle_command(self, command: str) -> str:
+        self._clear_finished_session()
         verb = command.strip().split()[0] if command.strip() else ""
         if verb == "status":
             if self.state.session_id:
@@ -79,7 +81,7 @@ class ControlServer:
         if self.state.status != "idle":
             return f"OK {self.state.status} session={self.state.session_id}"
         decision = self._start_decision()
-        if asyncio.iscoroutine(decision):
+        if inspect.isawaitable(decision):
             decision = await decision
         if not decision.allowed:
             return f"ERROR start denied: {decision.reason}"
@@ -100,6 +102,14 @@ class ControlServer:
         await writer.drain()
         writer.close()
         await writer.wait_closed()
+
+    def finish_session(self, session_id: str) -> None:
+        if self.state.session_id == session_id:
+            self.state = ControlState()
+
+    def _clear_finished_session(self) -> None:
+        if self.state.status == "active" and self.state.session_id is None:
+            self.state = ControlState()
 
 
 async def send_control_command(socket_path: Path, command: str) -> str:

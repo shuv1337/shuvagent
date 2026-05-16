@@ -3,7 +3,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Iterable
 
-from shuvagent.realtime.events import RealtimeError, ScriptedTurn, SessionState
+from shuvagent.realtime.events import (
+    RealtimeApiEvent,
+    RealtimeError,
+    ScriptedTurn,
+    SessionState,
+)
 from shuvagent.tools.types import ToolCallRequest
 
 
@@ -13,16 +18,19 @@ class FakeRealtimeSession:
         self._audio_out_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
         self._tool_call_queue: asyncio.Queue[ToolCallRequest | None] = asyncio.Queue()
         self._error_queue: asyncio.Queue[RealtimeError | None] = asyncio.Queue()
+        self._api_event_queue: asyncio.Queue[RealtimeApiEvent | None] = asyncio.Queue()
         self._pending_audio = bytearray()
         self._next_turn = 0
         self.tool_results: list[tuple[str, dict[str, object]]] = []
         self.sent_audio: list[bytes] = []
         self.cancel_count = 0
+        self.fail_cancel_response = False
         self.state = SessionState.CLOSED
         self.is_open = False
         self.audio_out = self._iter_queue(self._audio_out_queue)
         self.tool_calls = self._iter_queue(self._tool_call_queue)
         self.errors = self._iter_queue(self._error_queue)
+        self.api_events = self._iter_queue(self._api_event_queue)
 
     async def connect(self) -> None:
         self.state = SessionState.READY
@@ -63,6 +71,8 @@ class FakeRealtimeSession:
 
     async def cancel_response(self) -> None:
         self.cancel_count += 1
+        if self.fail_cancel_response:
+            raise RuntimeError("cancel failed")
 
     async def close(self) -> None:
         self.state = SessionState.CLOSED
@@ -70,6 +80,13 @@ class FakeRealtimeSession:
         await self._audio_out_queue.put(None)
         await self._tool_call_queue.put(None)
         await self._error_queue.put(None)
+        await self._api_event_queue.put(None)
+
+    async def emit_api_event(self, event: RealtimeApiEvent) -> None:
+        await self._api_event_queue.put(event)
+
+    async def emit_error(self, error: RealtimeError) -> None:
+        await self._error_queue.put(error)
 
     async def pause(self, reason: str) -> None:
         del reason

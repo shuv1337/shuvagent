@@ -16,8 +16,15 @@ Foundation work is implemented through the first conversational slices:
 - OpenAI Realtime WebSocket session implementation
 - read-only desktop tools for selection, clipboard, active window, and ShuVoice status
 - streaming CLI run path wired through the app/session loop
+- runtime safety caps for session duration and model output tokens
+- redacted telemetry for session duration, first model audio latency, API errors,
+  rate limits, token usage, ShuVoice mic arbitration, and audio capture/device
+  problems
 
-The remaining product work is tracked in [`PLAN-01-bootstrap-and-first-slice.md`](PLAN-01-bootstrap-and-first-slice.md).
+Source-level hardening is implemented and the opt-in live Realtime smoke has
+passed locally with credentials. Manual microphone/speaker and ShuVoice
+arbitration QA is still required before treating v0.1.0 as
+production-validated.
 
 ## Architecture
 
@@ -35,7 +42,7 @@ The default security posture is deny-by-default. Model events do not call handle
 
 ## Relationship To ShuVoice
 
-ShuVoice always wins mic contention. On session start, shuvagent checks `shuvoice control status`; if ShuVoice is recording, the agent refuses to start. During an active session, shuvagent polls ShuVoice and pauses its realtime session when push-to-talk becomes active.
+ShuVoice always wins mic contention. On session start, shuvagent checks `shuvoice control status`; if ShuVoice is recording, the agent refuses to start. During an active session, shuvagent polls ShuVoice and pauses its realtime session when push-to-talk becomes active, emitting `shuvoice.mic_arbitration` events for pause/resume. Each shuvagent session also requests `shuvoice control tts_stop` before opening Realtime.
 
 Useful ShuVoice commands:
 
@@ -78,10 +85,19 @@ Start a conversational session:
 uv run shuvagent run
 ```
 
+`control start` is denied until the configured API key environment variable is
+available.
+
 Check control status:
 
 ```bash
 uv run shuvagent status
+```
+
+Check live-validation prerequisites without printing secret values:
+
+```bash
+uv run shuvagent doctor
 ```
 
 Use the Python module entry point:
@@ -106,6 +122,7 @@ Example files live in [`examples/`](examples/):
 - [`examples/config.toml`](examples/config.toml)
 - [`examples/local.dev.example`](examples/local.dev.example)
 - [`examples/hyprland-bind.conf`](examples/hyprland-bind.conf)
+- [`docs/live-validation-checklist.md`](docs/live-validation-checklist.md)
 
 ## Development
 
@@ -118,6 +135,19 @@ uv run pytest
 ```
 
 Live OpenAI smoke tests are gated by `OPENAI_API_KEY`; fake-session tests run without network credentials.
+
+Opt-in live Realtime smoke:
+
+```bash
+OPENAI_API_KEY=... SHUVAGENT_RUN_LIVE_REALTIME=1 \
+  uv run pytest tests/integration/test_live_realtime.py -q
+```
+
+Manual validation before release is tracked in
+[`docs/live-validation-checklist.md`](docs/live-validation-checklist.md). It
+covers spoken input/output, selected-text Q&A, ShuVoice start denial while
+recording, mid-session pause/resume when ShuVoice takes the mic, safety caps,
+telemetry, and prompt stop behavior.
 
 ## Tech Stack
 
@@ -135,6 +165,8 @@ Live OpenAI smoke tests are gated by `OPENAI_API_KEY`; fake-session tests run wi
 
 - [`AGENTS.md`](AGENTS.md) - operational constraints for coding agents
 - [`PLAN-01-bootstrap-and-first-slice.md`](PLAN-01-bootstrap-and-first-slice.md) - implementation roadmap
+- [`docs/live-validation-checklist.md`](docs/live-validation-checklist.md) - release validation checklist
+- [`docs/issue-1-completion-audit.md`](docs/issue-1-completion-audit.md) - issue #1 evidence map
 - [`assets/architecture.html`](assets/architecture.html) - source HTML for the architecture screenshot
 
 ## License

@@ -28,7 +28,7 @@ from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from shuvagent.realtime.events import RealtimeError, SessionState
+from shuvagent.realtime.events import RealtimeApiEvent, RealtimeError, SessionState
 from shuvagent.tools.types import ToolCallRequest, ToolSpec
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime"
@@ -49,6 +49,7 @@ class OpenAISessionConfig:
     )
     reasoning_effort: str = "low"
     tools: tuple[ToolSpec, ...] = ()
+    max_output_tokens: int = 800
     request_timeout_sec: float = 10.0
     # Optional URL override (tests / staging).
     url: str = REALTIME_URL
@@ -80,15 +81,22 @@ class OpenAIRealtimeSession:
         init=False, repr=False
     )
     _error_queue: asyncio.Queue[RealtimeError | None] = field(init=False, repr=False)
+    _api_event_queue: asyncio.Queue[RealtimeApiEvent | None] = field(
+        init=False, repr=False
+    )
     _reader_task: asyncio.Task[None] | None = field(default=None, init=False)
+    _response_active: bool = field(default=False, init=False)
+    _response_after_active_done: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self._audio_out_queue = asyncio.Queue()
         self._tool_call_queue = asyncio.Queue()
         self._error_queue = asyncio.Queue()
+        self._api_event_queue = asyncio.Queue()
         self.audio_out = _iter_queue(self._audio_out_queue)
         self.tool_calls = _iter_queue(self._tool_call_queue)
         self.errors = _iter_queue(self._error_queue)
+        self.api_events = _iter_queue(self._api_event_queue)
 
     # ------------------------------------------------------------------
     # Protocol surface
@@ -96,7 +104,7 @@ class OpenAIRealtimeSession:
     async def connect(self) -> None:
         self.state = SessionState.CONNECTING
         try:
-            import websockets  # type: ignore[import-not-found]
+            import websockets
         except ImportError as exc:  # pragma: no cover - import guard
             raise RuntimeError(
                 "OpenAIRealtimeSession requires the 'websockets' package. "
@@ -104,10 +112,7 @@ class OpenAIRealtimeSession:
             ) from exc
 
         url = f"{self.config.url}?model={self.config.model}"
-        headers = [
-            ("Authorization", f"Bearer {self.config.api_key}"),
-            ("OpenAI-Beta", "realtime=v1"),
-        ]
+        headers = [("Authorization", f"Bearer {self.config.api_key}")]
         self._ws = await asyncio.wait_for(
             websockets.connect(url, additional_headers=headers),
             timeout=self.config.request_timeout_sec,
@@ -129,7 +134,7 @@ class OpenAIRealtimeSession:
     async def commit_input(self) -> None:
         self._require_open()
         await self._ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
-        await self._ws.send(json.dumps({"type": "response.create"}))
+        await self._send_response_create()
 
     async def send_tool_result(
         self,
@@ -146,20 +151,28 @@ class OpenAIRealtimeSession:
             },
         }
         await self._ws.send(json.dumps(payload))
-        # Ask the model to continue speaking with the tool result.
-        await self._ws.send(json.dumps({"type": "response.create"}))
+        # The model may emit the tool call before the enclosing response.done.
+        # Realtime rejects overlapping default-conversation responses, so wait
+        # until the active function-call response is finished before asking the
+        # model to continue with the tool result.
+        if self._response_active:
+            self._response_after_active_done = True
+        else:
+            await self._send_response_create()
 
     async def cancel_response(self) -> None:
         if not self.is_open or self._ws is None:
             return
         await self._ws.send(json.dumps({"type": "response.cancel"}))
+        self._response_active = False
 
     async def pause(self, reason: str) -> None:
         del reason
         self.is_paused = True
         if self.is_open and self._ws is not None:
             await self._ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
-            await self._ws.send(json.dumps({"type": "response.cancel"}))
+            if self._response_active:
+                await self._ws.send(json.dumps({"type": "response.cancel"}))
         self.state = SessionState.PAUSED
 
     async def resume(self, reason: str) -> None:
@@ -187,6 +200,7 @@ class OpenAIRealtimeSession:
         await self._audio_out_queue.put(None)
         await self._tool_call_queue.put(None)
         await self._error_queue.put(None)
+        await self._api_event_queue.put(None)
 
     # ------------------------------------------------------------------
     # Internals
@@ -199,22 +213,49 @@ class OpenAIRealtimeSession:
         return {
             "type": "session.update",
             "session": {
+                "type": "realtime",
                 "model": self.config.model,
-                "voice": self.config.voice,
-                "modalities": ["audio", "text"],
+                "output_modalities": ["audio"],
                 "instructions": self.config.instructions,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
-                "turn_detection": {
-                    "type": "server_vad",
-                    "create_response": True,
-                    "interrupt_response": True,
+                "audio": {
+                    "input": {
+                        "format": {
+                            "type": "audio/pcm",
+                            "rate": 24000,
+                        },
+                        "transcription": {"model": "gpt-4o-mini-transcribe"},
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "create_response": True,
+                            "interrupt_response": True,
+                        },
+                    },
+                    "output": {
+                        "format": {
+                            "type": "audio/pcm",
+                            "rate": 24000,
+                        },
+                        "voice": self.config.voice,
+                    },
                 },
                 "tools": [_tool_to_openai_function(t) for t in self.config.tools],
                 "tool_choice": "auto",
+                "max_output_tokens": self.config.max_output_tokens,
             },
         }
+
+    def _response_create_payload(self) -> dict[str, Any]:
+        return {
+            "type": "response.create",
+            "response": {
+                "output_modalities": ["audio"],
+                "max_output_tokens": self.config.max_output_tokens,
+            },
+        }
+
+    async def _send_response_create(self) -> None:
+        await self._ws.send(json.dumps(self._response_create_payload()))
+        self._response_active = True
 
     async def _read_loop(self) -> None:
         assert self._ws is not None
@@ -233,31 +274,43 @@ class OpenAIRealtimeSession:
 
     async def _handle_event(self, event: Mapping[str, Any]) -> None:
         etype = event.get("type", "")
-        if etype == "response.audio.delta":
+        if etype in {"response.output_audio.delta", "response.audio.delta"}:
             audio_b64 = event.get("delta") or event.get("audio") or ""
             if isinstance(audio_b64, str) and audio_b64:
                 self.state = SessionState.SPEAKING
                 await self._audio_out_queue.put(base64.b64decode(audio_b64))
             return
+        if etype == "response.created":
+            self._response_active = True
+            return
         if etype == "response.function_call_arguments.done":
             call_id = str(event.get("call_id") or event.get("id") or "")
             name = str(event.get("name") or "")
             args_raw = event.get("arguments") or "{}"
-            try:
-                arguments = json.loads(args_raw) if isinstance(args_raw, str) else {}
-            except json.JSONDecodeError:
-                arguments = {}
-            if call_id and name:
-                await self._tool_call_queue.put(
-                    ToolCallRequest(
-                        call_id=call_id,
-                        tool_name=name,
-                        arguments=arguments,
-                    )
-                )
+            await self._emit_tool_call(call_id, name, args_raw)
+            return
+        if etype == "response.output_item.done":
+            item = event.get("item", {})
+            if isinstance(item, Mapping) and item.get("type") == "function_call":
+                call_id = str(item.get("call_id") or item.get("id") or "")
+                name = str(item.get("name") or "")
+                args_raw = item.get("arguments") or "{}"
+                await self._emit_tool_call(call_id, name, args_raw)
             return
         if etype == "response.done":
             self.state = SessionState.READY
+            self._response_active = False
+            await self._api_event_queue.put(RealtimeApiEvent(etype, dict(event)))
+            if (
+                self._response_after_active_done
+                and self.is_open
+                and self._ws is not None
+            ):
+                self._response_after_active_done = False
+                await self._send_response_create()
+            return
+        if etype == "rate_limits.updated":
+            await self._api_event_queue.put(RealtimeApiEvent(etype, dict(event)))
             return
         if etype == "error":
             err = event.get("error", {})
@@ -268,8 +321,24 @@ class OpenAIRealtimeSession:
                 code, message = "error", str(err)
             await self._error_queue.put(RealtimeError(code, message))
             return
-        # Other events (transcripts, session lifecycle, rate-limits) are
-        # silently ignored at this milestone; surfaced in later plans.
+        # Transcripts and low-level session lifecycle events are intentionally
+        # ignored here; telemetry only consumes safe API/error/usage events.
+
+    async def _emit_tool_call(
+        self, call_id: str, name: str, args_raw: object
+    ) -> None:
+        try:
+            arguments = json.loads(args_raw) if isinstance(args_raw, str) else {}
+        except json.JSONDecodeError:
+            arguments = {}
+        if call_id and name:
+            await self._tool_call_queue.put(
+                ToolCallRequest(
+                    call_id=call_id,
+                    tool_name=name,
+                    arguments=arguments,
+                )
+            )
 
 
 def _tool_to_openai_function(tool: ToolSpec) -> dict[str, Any]:
@@ -281,7 +350,7 @@ def _tool_to_openai_function(tool: ToolSpec) -> dict[str, Any]:
     }
 
 
-async def _iter_queue(queue: asyncio.Queue) -> AsyncIterator:
+async def _iter_queue[T](queue: asyncio.Queue[T | None]) -> AsyncIterator[T]:
     while True:
         item = await queue.get()
         if item is None:

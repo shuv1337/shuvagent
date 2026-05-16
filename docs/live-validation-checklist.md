@@ -1,0 +1,212 @@
+# Live Validation Checklist
+
+Use this checklist before treating the read-only voice slice as
+production-validated. These checks intentionally require a real
+Linux/Hyprland desktop, PipeWire/PortAudio devices, ShuVoice on `PATH`,
+`wl-paste`, `hyprctl`, and an OpenAI API key.
+
+## Preconditions
+
+- `uv sync` has completed.
+- `~/.config/shuvagent/config.toml` exists and includes sane safety caps:
+  - `realtime.session_max_duration_sec > 0`
+  - `0 < realtime.output_token_cap <= 4096`
+- `~/.config/shuvagent/local.dev` contains `OPENAI_API_KEY=...`.
+- `shuvoice control status` returns a status or fails cleanly when ShuVoice is
+  not running.
+- `wl-paste --primary --no-newline` works for selected text on this desktop.
+- `hyprctl activewindow -j` works for active-window context.
+
+## Automated Live Smoke
+
+Run the local prerequisite doctor first. It must not print secret values:
+
+```bash
+uv run shuvagent doctor
+```
+
+Expected result:
+
+- Config and safety caps pass.
+- `$OPENAI_API_KEY` is reported as set.
+- `sounddevice` and `websockets` are available.
+- Missing optional desktop helpers are reported as `WARN`, not as leaked raw
+  desktop content.
+
+`shuvagent doctor` and `shuvagent run` load `~/.config/shuvagent/local.dev`.
+The pytest smoke runs as a test process, so source the env file explicitly
+before running it. It must open and close a live WebSocket session with the
+configured model, voice, and tool schema:
+
+```bash
+set -a
+. ~/.config/shuvagent/local.dev
+set +a
+SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q
+```
+
+Expected result:
+
+- The test passes.
+- It is not skipped.
+- No raw selected text, clipboard text, transcripts, or API key appears in the
+  output.
+
+## Foreground Process And Control Socket
+
+Without an API key loaded, `control start` must fail safely:
+
+Terminal 1:
+
+```bash
+env -u OPENAI_API_KEY uv run shuvagent run
+```
+
+Terminal 2:
+
+```bash
+env -u OPENAI_API_KEY uv run shuvagent control start
+env -u OPENAI_API_KEY uv run shuvagent control status
+```
+
+Expected result:
+
+- `start` returns `ERROR start denied: missing_api_key:OPENAI_API_KEY`.
+- `status` remains `OK idle`.
+
+With an API key loaded, verify normal foreground and control behavior.
+
+Terminal 1:
+
+```bash
+uv run shuvagent run
+```
+
+Terminal 2:
+
+```bash
+uv run shuvagent control status
+uv run shuvagent control start
+uv run shuvagent control status
+uv run shuvagent control stop
+uv run shuvagent control status
+```
+
+Expected result:
+
+- `run` stays foreground and reports the control socket path.
+- `start` returns `OK started session=...`.
+- active `status` includes `OK active session=...`.
+- `stop` returns `OK stopped` promptly.
+- final `status` returns `OK idle`.
+
+## Voice Path
+
+1. Start `uv run shuvagent run`.
+2. Start a session with `uv run shuvagent control start`.
+3. Ask a short spoken question.
+4. Listen for a concise spoken answer.
+5. Stop with `uv run shuvagent control stop`.
+
+Expected result:
+
+- Mic audio is accepted at 24 kHz PCM16 without device errors.
+- Speaker playback uses the default output device.
+- First model audio emits `realtime.first_audio_response_latency_ms`.
+- Stop interrupts speech promptly.
+
+## Selected Text Q&A
+
+1. Select a short paragraph in any Hyprland window.
+2. Start a session.
+3. Ask: "What does the selected text mean?"
+
+Expected result:
+
+- The model answers using the selected text.
+- Telemetry/audit output includes only safe summaries such as length or hash
+  prefix, not raw selected text.
+- `debug_log_raw_text = false` remains the default.
+
+## ShuVoice Arbitration
+
+Pre-start denial:
+
+1. Hold ShuVoice push-to-talk so `shuvoice control status` reports recording.
+2. Run `uv run shuvagent control start`.
+
+Expected result:
+
+- The command returns `ERROR start denied: shuvoice-recording`.
+- No shuvagent mic session starts.
+
+Mid-session pause/resume:
+
+1. Start a shuvagent session.
+2. Trigger ShuVoice recording during the session.
+3. Release ShuVoice recording.
+
+Expected result:
+
+- shuvagent pauses when ShuVoice records.
+- shuvagent resumes after ShuVoice releases the mic.
+- Realtime receives `input_audio_buffer.clear` and `response.cancel` during
+  pause.
+- The session does not need to be restarted to continue.
+- Telemetry emits `shuvoice.mic_arbitration` with `action=pause` and
+  `action=resume` without raw transcript or selected text.
+
+TTS arbitration:
+
+1. Start ShuVoice TTS.
+2. Start a shuvagent session.
+
+Expected result:
+
+- shuvagent calls `shuvoice control tts_stop` before using its own voice.
+- Telemetry emits `shuvoice.tts_stop_requested` with `ok=true` when the stop
+  request succeeds.
+
+## Safety Caps And Telemetry
+
+Use a temporary config with a short duration cap:
+
+```toml
+[realtime]
+session_max_duration_sec = 2
+output_token_cap = 800
+```
+
+Expected result:
+
+- A forgotten session stops around the duration cap.
+- Telemetry emits `agent.session.interrupted` with `reason=duration_cap`.
+- Completed sessions emit `agent.session.duration_ms`.
+
+Use a temporary config with a small output token cap:
+
+```toml
+[realtime]
+session_max_duration_sec = 300
+output_token_cap = 1
+```
+
+Expected result:
+
+- A response that crosses the cap stops the session.
+- Telemetry emits `realtime.usage`, `realtime.usage.summary`, and
+  `agent.session.interrupted` with `reason=output_token_cap`.
+
+## Failure Evidence To Capture
+
+If any step fails, capture only safe diagnostics:
+
+```bash
+uv run shuvagent control status
+shuvoice control status
+hyprctl activewindow -j
+```
+
+Do not paste raw selected text, clipboard contents, transcripts, or API keys
+into logs or issue comments unless `debug_log_raw_text = true` was explicitly
+enabled for a private diagnostic run.

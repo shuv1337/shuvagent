@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 from dataclasses import dataclass
 
 from shuvagent.coordination import can_start_agent_session, monitor_shuvoice
@@ -46,17 +47,35 @@ def test_allows_when_shuvoice_not_running() -> None:
     assert decision.reason == "shuvoice-not-running"
 
 
+def test_denies_when_shuvoice_status_times_out() -> None:
+    def runner(args: list[str], timeout: float) -> str:
+        raise subprocess.TimeoutExpired(args, timeout)
+
+    decision = can_start_agent_session(runner=runner)
+
+    assert not decision.allowed
+    assert decision.reason == "shuvoice-status-timeout"
+
+
 def test_pauses_and_resumes_when_shuvoice_records_mid_session() -> None:
     async def run() -> None:
         session = FakeSession()
         statuses = iter(["OK idle", "OK recording", "OK idle"])
+        arbitration_events: list[tuple[str, str]] = []
 
         def runner(args: list[str], timeout: float) -> str:
             del args, timeout
             return next(statuses, "OK idle")
 
         task = asyncio.create_task(
-            monitor_shuvoice(session, runner=runner, interval_sec=0.01)
+            monitor_shuvoice(
+                session,
+                runner=runner,
+                interval_sec=0.01,
+                event_sink=lambda action, reason: arbitration_events.append(
+                    (action, reason)
+                ),
+            )
         )
         await asyncio.sleep(0.05)
         session.is_open = False
@@ -65,6 +84,10 @@ def test_pauses_and_resumes_when_shuvoice_records_mid_session() -> None:
         assert session.events == [
             "pause:shuvoice-took-mic",
             "resume:shuvoice-released-mic",
+        ]
+        assert arbitration_events == [
+            ("pause", "shuvoice-took-mic"),
+            ("resume", "shuvoice-released-mic"),
         ]
 
     asyncio.run(run())

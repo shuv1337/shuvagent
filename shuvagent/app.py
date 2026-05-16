@@ -10,10 +10,12 @@ from shuvagent.telemetry.schema import TelemetryEvent
 from shuvagent.tools.policy import PermissionGate
 from shuvagent.tools.registry import ToolRegistry
 from shuvagent.tools.types import ToolCallRequest, ToolResult
+from shuvagent.usage import UsageTracker, parse_rate_limits, parse_realtime_usage
 
 AudioStream = AsyncIterator[bytes]
 PlaybackSink = Callable[[bytes], Awaitable[None]]
 EventSink = Callable[[TelemetryEvent], None]
+MonitorFactory = Callable[[], Awaitable[None]]
 
 
 @dataclass
@@ -86,7 +88,8 @@ class ConversationApp:
         playback: PlaybackSink,
         stop_event: asyncio.Event,
         event_sink: EventSink | None = None,
-        session_monitors: Iterable[Callable[[], Awaitable[None]]] = (),
+        session_monitors: Iterable[MonitorFactory] = (),
+        usage_tracker: UsageTracker | None = None,
     ) -> None:
         """Drive a live conversation session until ``stop_event`` is set.
 
@@ -100,11 +103,18 @@ class ConversationApp:
         await self._session.connect()
         emit(TelemetryEvent(event="agent.session.connected"))
 
-        monitor_tasks = [asyncio.create_task(monitor()) for monitor in session_monitors]
+        monitor_tasks: list[asyncio.Task[None]] = [
+            asyncio.create_task(_await_monitor(monitor()))
+            for monitor in session_monitors
+        ]
         audio_out_task = asyncio.create_task(
             self._stream_audio_out(playback, emit, session_start_time=start_time)
         )
         tool_task = asyncio.create_task(self._stream_tool_calls(emit))
+        error_task = asyncio.create_task(self._stream_errors(emit, stop_event))
+        api_event_task = asyncio.create_task(
+            self._stream_api_events(emit, stop_event, usage_tracker)
+        )
         send_task = asyncio.create_task(
             self._stream_audio_in(audio_in, stop_event, emit)
         )
@@ -118,17 +128,42 @@ class ConversationApp:
             del done
         finally:
             stop_event.set()
-            tasks = (send_task, audio_out_task, tool_task, stop_task, *monitor_tasks)
+            duration_ms = round((time.monotonic() - start_time) * 1000, 2)
+            emit(
+                TelemetryEvent(
+                    event="agent.session.duration_ms",
+                    attributes={"duration_ms": duration_ms},
+                )
+            )
+            if usage_tracker is not None:
+                emit(
+                    TelemetryEvent(
+                        event="realtime.usage.summary",
+                        attributes=usage_tracker.snapshot(),
+                    )
+                )
+            tasks = (
+                send_task,
+                audio_out_task,
+                tool_task,
+                error_task,
+                api_event_task,
+                stop_task,
+                *monitor_tasks,
+            )
             for task in tasks:
                 task.cancel()
             await asyncio.gather(
                 send_task,
                 audio_out_task,
                 tool_task,
+                error_task,
+                api_event_task,
                 stop_task,
                 *monitor_tasks,
                 return_exceptions=True,
             )
+            await self._cancel_response_best_effort(emit)
             await self._session.close()
             emit(TelemetryEvent(event="agent.session.stopped"))
 
@@ -193,8 +228,101 @@ class ConversationApp:
                 _tool_result_payload(tool_result),
             )
 
+    async def _stream_errors(
+        self,
+        emit: EventSink,
+        stop_event: asyncio.Event,
+    ) -> None:
+        async for error in self._session.errors:
+            if error.code == "response_cancel_not_active":
+                emit(
+                    TelemetryEvent(
+                        event="realtime.cancel_ignored",
+                        attributes={"code": error.code},
+                    )
+                )
+                continue
+            emit(
+                TelemetryEvent(
+                    event="realtime.error",
+                    level="error",
+                    attributes={"code": error.code, "message": error.message},
+                )
+            )
+            if error.code in {"rate_limit", "rate_limit_exceeded"}:
+                emit(
+                    TelemetryEvent(
+                        event="realtime.rate_limit",
+                        level="warning",
+                        attributes={"code": error.code, "message": error.message},
+                    )
+                )
+            stop_event.set()
 
-async def _anext(iterator):
+    async def _stream_api_events(
+        self,
+        emit: EventSink,
+        stop_event: asyncio.Event,
+        usage_tracker: UsageTracker | None,
+    ) -> None:
+        async for event in self._session.api_events:
+            if event.type == "rate_limits.updated":
+                for limit in parse_rate_limits(event.payload):
+                    emit(
+                        TelemetryEvent(
+                            event="realtime.rate_limit",
+                            attributes={
+                                "name": limit.name,
+                                "remaining": limit.remaining,
+                                "reset_seconds": limit.reset_seconds,
+                            },
+                        )
+                    )
+                continue
+            if usage_tracker is None:
+                continue
+            usage = parse_realtime_usage(event.payload)
+            if usage is None:
+                continue
+            decision = usage_tracker.record_usage(usage)
+            emit(
+                TelemetryEvent(
+                    event="realtime.usage",
+                    attributes=usage_tracker.snapshot(),
+                )
+            )
+            if decision.should_stop:
+                emit(
+                    TelemetryEvent(
+                        event="agent.session.interrupted",
+                        level="warning",
+                        attributes={
+                            "reason": decision.reason,
+                            **usage_tracker.snapshot(),
+                        },
+                    )
+                )
+                stop_event.set()
+
+    async def _cancel_response_best_effort(self, emit: EventSink) -> None:
+        try:
+            await self._session.cancel_response()
+            emit(TelemetryEvent(event="realtime.response_cancel_requested"))
+        except Exception:
+            emit(
+                TelemetryEvent(
+                    event="realtime.response_cancel_failed",
+                    level="warning",
+                )
+            )
+            pass
+
+
+async def _await_monitor(awaitable: Awaitable[None]) -> None:
+    await awaitable
+
+
+async def _anext[T](iterator: AsyncIterator[T]) -> T | None:
     try:
         return await anext(iterator)
     except StopAsyncIteration:
