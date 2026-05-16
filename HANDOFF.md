@@ -2,8 +2,9 @@
 
 ## Objective
 Get shuvagent to a first usable read-only conversational voice slice.
-PLAN-01 milestones M1.0–M1.8 are now all implemented in source.
-Remaining work is **live validation** (manual QA + opt-in smoke test).
+PLAN-01 milestones M1.0–M1.8 are source-complete. This session continued
+post-M1.7 hardening: mid-session ShuVoice arbitration, duration-cap stop,
+first-audio telemetry, and an opt-in live Realtime smoke test.
 
 ## Current status
 - **Done (source-complete):** M1.0–M1.8.
@@ -16,84 +17,99 @@ Remaining work is **live validation** (manual QA + opt-in smoke test).
     `get_clipboard_text`, `get_active_window`, `get_shuvoice_status`.
     Backed by `shuvagent/selection.py` (wl-paste) and
     `shuvagent/window.py` (hyprctl).
-  - CLI `run` is now wired: starts the control server, and on
+  - CLI `run` is wired: starts the control server, and on
     `control start` launches a streaming `ConversationApp` against the
     real OpenAI session (when `OPENAI_API_KEY` is set), feeding it 24kHz
     PCM16 from sounddevice and piping audio out to the speaker.
-  - `ConversationApp.run_streaming()` is the new public entrypoint for
-    long-running sessions (the old `run_once` remains for the existing
-    integration test).
-  - Added `websockets>=13.0` to `pyproject.toml` deps. Mypy strict now
-    also covers `shuvagent/selection.py` and `shuvagent/window.py`.
-- **Not done:** live smoke test, manual QA checklist (§13.2 of PLAN-01).
+- **New hardening completed after source-complete checkpoint:**
+  - `ConversationApp.run_streaming()` now accepts `session_monitors`,
+    starts them only after `session.connect()`, and cancels them during
+    shutdown.
+  - `_SessionRunner` now wires `coordination.monitor_shuvoice()` into
+    live sessions, so ShuVoice can pause/resume the Realtime session
+    mid-call.
+  - `_SessionRunner` now enforces
+    `config.realtime.session_max_duration_sec` via a duration-cap task
+    that emits `agent.session.interrupted` with `reason=duration_cap`
+    and sets the stop event.
+  - `ConversationApp._stream_audio_out()` emits
+    `realtime.first_audio_response_latency_ms` on the first model audio
+    chunk.
+  - Added opt-in `tests/integration/test_live_realtime.py`; skipped
+    unless both `OPENAI_API_KEY` and `SHUVAGENT_RUN_LIVE_REALTIME=1`
+    are set.
+- **Not done:** live hardware smoke/manual QA (§13.2 of PLAN-01), token
+  output cap, audio overflow telemetry.
 
 ## Validation status
-- `uv run pytest` — **55 passed**.
 - `uv run ruff check .` — clean.
-- `uv run mypy` — clean (12 source files under strict).
-- `uv run shuvagent --help` — works.
-- Live `OPENAI_API_KEY=... shuvagent run` — **not yet executed** on
-  hardware. This is the remaining gate.
+- `uv run pytest -q` — **55 passed, 1 skipped** (live Realtime smoke skipped).
+- `uv run mypy` — clean (12 strict source files).
+- Live `OPENAI_API_KEY=... SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py` — **not run**.
+- Live `uv run shuvagent run` + voice I/O — **not run** in this session.
 
 ## Key context
 - `cli.py._SessionRunner` bridges control-socket start/stop to a
   background streaming session task. Only one active session at a time;
   `control stop` waits up to 5s for graceful shutdown.
+- Pre-start ShuVoice arbitration still comes from `ControlServer`'s
+  default `start_decision=can_start_agent_session`. Mid-session
+  arbitration is now handled by a monitor passed to
+  `ConversationApp.run_streaming()`.
 - Mic capture in `cli.py._mic_stream` uses a `sounddevice.RawInputStream`
   callback that pushes 20 ms PCM16 blocks (480 frames @ 24 kHz) into an
   asyncio queue.
 - Speaker playback is a tiny async wrapper around
-  `sounddevice.RawOutputStream` — the stream is opened lazily on the
-  first chunk so headless test runs don't touch PortAudio.
-- `OpenAIRealtimeSession` exposes Protocol-compatible attributes
-  (`audio_out`, `tool_calls`, `errors`, `state`, `is_open`) and adds
-  `pause()` / `resume()` so `coordination.monitor_shuvoice` can also
-  drive it (same Protocol shape as `FakeRealtimeSession`).
-- Tool specs are passed into the session at connect time so
-  `session.update.tools` mirrors what the registry will accept.
+  `sounddevice.RawOutputStream` — opened lazily on first chunk so
+  headless test runs don't touch PortAudio.
 - Read tool results include `text` (the model needs it) plus
   `text_len` + `text_sha256_prefix` (redaction-safe summary for audit).
+- `tests/integration/test_streaming_loop_with_fake.py` now asserts that
+  session monitors run after connect and that first-audio latency
+  telemetry is emitted.
 
 ## Important files
 - `PLAN-01-bootstrap-and-first-slice.md` — milestone definitions / exit gates.
 - `shuvagent/realtime/openai_session.py` — live WS implementation.
 - `shuvagent/tools/builtins/` — read-only tool catalogue + `default_read_only_tools()`.
 - `shuvagent/selection.py`, `shuvagent/window.py` — desktop I/O helpers.
-- `shuvagent/app.py` — `ConversationApp.run_streaming()` entrypoint.
-- `shuvagent/cli.py` — `_SessionRunner`, `_mic_stream`, `_speaker_playback`.
+- `shuvagent/app.py` — `ConversationApp.run_streaming()`, first-audio telemetry, session monitor lifecycle.
+- `shuvagent/cli.py` — `_SessionRunner`, duration cap, ShuVoice monitor wiring, `_mic_stream`, `_speaker_playback`.
 - `tests/test_openai_session.py` — wire-format lock-down (no network).
-- `tests/integration/test_streaming_loop_with_fake.py` — full streaming
-  loop against `FakeRealtimeSession`.
-- `tests/test_builtin_tools.py`, `tests/test_selection.py`, `tests/test_window.py`.
+- `tests/integration/test_streaming_loop_with_fake.py` — full streaming loop against `FakeRealtimeSession`.
+- `tests/integration/test_live_realtime.py` — opt-in live WebSocket smoke.
 
 ## Next steps
-1. **Live smoke test.** With `OPENAI_API_KEY` set:
-   - `uv run shuvagent run` in one shell.
+1. **Run opt-in live Realtime smoke** when API credentials are available:
+   ```bash
+   OPENAI_API_KEY=... SHUVAGENT_RUN_LIVE_REALTIME=1 \
+     uv run pytest tests/integration/test_live_realtime.py -q
+   ```
+2. **Run manual hardware QA** from PLAN-01 §13.2:
+   - `uv run shuvagent run` in one terminal.
    - `uv run shuvagent control start` in another; speak; verify reply.
-   - Verify `get_selected_text` round-trip by selecting some text and
-     asking "what does this say?".
-   - Add `tests/integration/test_live_realtime.py` (skipped without API
-     key) per §9.4 of PLAN-01.
-2. **Run the manual QA checklist** in PLAN-01 §13.2 and check the
-   boxes. Capture issues as separate plans.
-3. **Wire `coordination.monitor_shuvoice`** into `_SessionRunner` so
-   live sessions pause when ShuVoice grabs the mic. (Currently the
-   pre-start check happens via `ControlServer.start_decision`, but
-   mid-session arbitration isn't connected yet.)
-4. **Session duration / token caps** (PLAN-01 §10) — wire the
-   `realtime.session_max_duration_sec` hard cap into `_SessionRunner`
-   (asyncio.wait_for around the streaming task).
-5. **Telemetry pass:** `_SessionRunner` already emits lifecycle
-   events; consider adding `realtime.first_audio_response_latency_ms`
-   inside `OpenAIRealtimeSession._handle_event` when the first
-   `response.audio.delta` arrives.
+   - Select text and ask "what does this say?"; verify the model calls
+     `get_selected_text` and answers using the selected text.
+   - `uv run shuvagent control stop`; verify speech stops promptly.
+   - Start while ShuVoice records; verify clear denial.
+   - Start ShuVoice PTT mid-agent-session; verify pause/resume behavior.
+3. **Implement output token cap** from PLAN-01 §10:
+   - Add `RealtimeConfig.session_max_output_tokens` default `20_000`.
+   - Parse token/rate-limit usage events in `OpenAIRealtimeSession`.
+   - Emit `cost.audio_output_tokens` / close on cap.
+4. **Add audio overflow telemetry** in `_mic_stream` (queue full/status
+   path should emit `audio.overflow`; current implementation silently drops).
+5. **Consider strict mypy expansion** to `shuvagent/app.py`,
+   `shuvagent/cli.py`, and `shuvagent/realtime/openai_session.py` once
+   runtime APIs settle.
 
 ## Risks / open questions
 - The Realtime API wire format used here matches the v1 beta as of
   May 2026. If OpenAI ships breaking changes, lock-down tests in
-  `test_openai_session.py` will need updating — they assert on
-  `session.update`, `input_audio_buffer.append/commit`,
-  `response.audio.delta`, `response.function_call_arguments.done`.
-- `_mic_stream` drops audio on queue overflow silently — acceptable
-  for v1 but should emit `audio.overflow` telemetry per PLAN-01 §8.1.
+  `test_openai_session.py` will need updating.
+- The live smoke currently opens/closes a Realtime session only; it does
+  not verify first audio because that requires microphone/hardware flow
+  and potentially paid token usage.
+- `_mic_stream` drops audio on queue overflow silently — acceptable for
+  v1 but should emit `audio.overflow` telemetry per PLAN-01 §8.1.
 - License file still "TBD" in README — non-blocking.
