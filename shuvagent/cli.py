@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import signal
 import sys
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Protocol, cast
@@ -107,6 +109,8 @@ async def _run(config_path: Path | None) -> int:
 
     api_key = os.environ.get(config.realtime.api_key_env)
     runner = _SessionRunner(config=config, api_key=api_key, sink=sink)
+    loop = asyncio.get_running_loop()
+    sighup_installed = False
 
     server = ControlServer(
         config.control.socket,
@@ -115,6 +119,22 @@ async def _run(config_path: Path | None) -> int:
         on_stop=runner.handle_stop,
     )
     runner.on_session_finished = server.finish_session
+    try:
+        loop.add_signal_handler(
+            signal.SIGHUP,
+            _reload_config,
+            config_path,
+            runner,
+            sink,
+        )
+        sighup_installed = True
+    except (NotImplementedError, RuntimeError):
+        sink.emit(
+            TelemetryEvent(
+                event="app.lifecycle.config_reload_unavailable",
+                level="warning",
+            )
+        )
     await server.start()
     print(f"[shuvagent] Loaded {loaded} env var(s) from {default_local_env_path()}")
     print(f"[shuvagent] Control socket: {config.control.socket}")
@@ -130,6 +150,8 @@ async def _run(config_path: Path | None) -> int:
     try:
         await server.serve_forever()
     finally:
+        if sighup_installed:
+            loop.remove_signal_handler(signal.SIGHUP)
         await runner.shutdown()
         await server.stop()
         sink.emit(TelemetryEvent(event="app.lifecycle.stop"))
@@ -147,6 +169,35 @@ def _start_decision(
         )
 
     return decide
+
+
+def _reload_config(
+    config_path: Path | None,
+    runner: _SessionRunner,
+    sink: _TelemetrySink,
+) -> bool:
+    try:
+        config = load_config(config_path)
+    except Exception as exc:
+        sink.emit(
+            TelemetryEvent(
+                event="app.lifecycle.config_reload_failed",
+                level="error",
+                attributes={"error": str(exc)},
+            )
+        )
+        return False
+    runner.update_config(config)
+    sink.emit(
+        TelemetryEvent(
+            event="app.lifecycle.config_reloaded",
+            attributes={
+                "session_max_duration_sec": config.realtime.session_max_duration_sec,
+                "output_token_cap": config.realtime.output_token_cap,
+            },
+        )
+    )
+    return True
 
 
 async def _control(verb: str, config_path: Path | None) -> int:
@@ -179,7 +230,29 @@ class _SessionRunner:
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
         self._session_id: str | None = None
+        self._usage_tracker: UsageTracker | None = None
         self.on_session_finished: Callable[[str], None] | None = None
+
+    def update_config(self, config: AppConfig) -> None:
+        old_config = self._config
+        self._config = config
+        if self._usage_tracker is not None:
+            self._usage_tracker.output_token_cap = config.realtime.output_token_cap
+        if (
+            self._task is not None
+            and not self._task.done()
+            and old_config.realtime.voice != config.realtime.voice
+        ):
+            self._sink.emit(
+                TelemetryEvent(
+                    event="app.lifecycle.config_reload_voice_deferred",
+                    level="warning",
+                    attributes={
+                        "old_voice": old_config.realtime.voice,
+                        "new_voice": config.realtime.voice,
+                    },
+                )
+            )
 
     async def handle_start(self, session_id: str) -> None:
         if self._task is not None and not self._task.done():
@@ -260,6 +333,10 @@ class _SessionRunner:
             self._stop_after_duration_cap(stop_event)
         )
         try:
+            usage_tracker = UsageTracker(
+                output_token_cap=self._config.realtime.output_token_cap
+            )
+            self._usage_tracker = usage_tracker
             await app.run_streaming(
                 audio_in=_mic_stream(
                     stop_event,
@@ -270,9 +347,7 @@ class _SessionRunner:
                 playback=_speaker_playback(self._config),
                 stop_event=stop_event,
                 event_sink=self._emit_session_event,
-                usage_tracker=UsageTracker(
-                    output_token_cap=self._config.realtime.output_token_cap
-                ),
+                usage_tracker=usage_tracker,
                 session_monitors=[
                     lambda: monitor_shuvoice(
                         monitored_session,
@@ -285,6 +360,7 @@ class _SessionRunner:
         except Exception as exc:  # pragma: no cover - runtime failure path
             self._emit_session_failure(exc)
         finally:
+            self._usage_tracker = None
             duration_task.cancel()
             await asyncio.gather(duration_task, return_exceptions=True)
 
@@ -342,7 +418,14 @@ class _SessionRunner:
         self._status_writer(f"[shuvagent] Session {state}: {reason}")
 
     async def _stop_after_duration_cap(self, stop_event: asyncio.Event) -> None:
-        await asyncio.sleep(self._config.realtime.session_max_duration_sec)
+        started_at = time.monotonic()
+        while not stop_event.is_set():
+            elapsed = time.monotonic() - started_at
+            remaining = self._config.realtime.session_max_duration_sec - elapsed
+            if remaining > 0:
+                await asyncio.sleep(min(remaining, 0.5))
+                continue
+            break
         if stop_event.is_set():
             return
         self._emit_session_event(

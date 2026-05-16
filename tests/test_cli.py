@@ -5,11 +5,12 @@ from collections.abc import Coroutine
 from typing import Any
 
 from shuvagent import cli
-from shuvagent.cli import _SessionRunner, _start_decision
+from shuvagent.cli import _reload_config, _SessionRunner, _start_decision
 from shuvagent.config import AppConfig
 from shuvagent.coordination import Decision
 from shuvagent.doctor import DoctorCheck
 from shuvagent.telemetry.schema import TelemetryEvent
+from shuvagent.usage import UsageTracker
 
 
 def test_run_command_returns_130_on_keyboard_interrupt(monkeypatch) -> None:
@@ -115,6 +116,82 @@ def test_session_runner_start_stop_and_shutdown_are_idempotent() -> None:
             "[shuvagent] Session started: control start",
             "[shuvagent] Session stopped: session ended",
         ]
+
+    asyncio.run(run())
+
+
+def test_reload_config_applies_safety_caps_to_runner(tmp_path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[realtime]
+session_max_duration_sec = 7
+output_token_cap = 123
+voice = "cedar"
+"""
+    )
+    sink = MemorySink()
+    runner = _SessionRunner(config=AppConfig(), api_key="sk-test", sink=sink)
+    runner._usage_tracker = UsageTracker(output_token_cap=800)
+
+    assert _reload_config(config_path, runner, sink)
+
+    assert runner._config.realtime.session_max_duration_sec == 7
+    assert runner._config.realtime.output_token_cap == 123
+    assert runner._config.realtime.voice == "cedar"
+    assert runner._usage_tracker.output_token_cap == 123
+    assert sink.events[-1].event == "app.lifecycle.config_reloaded"
+    assert sink.events[-1].attributes == {
+        "session_max_duration_sec": 7,
+        "output_token_cap": 123,
+    }
+
+
+def test_reload_config_keeps_old_config_when_invalid(tmp_path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[realtime]
+voice = "invalid"
+"""
+    )
+    sink = MemorySink()
+    runner = _SessionRunner(config=AppConfig(), api_key="sk-test", sink=sink)
+
+    assert not _reload_config(config_path, runner, sink)
+
+    assert runner._config == AppConfig()
+    assert sink.events[-1].event == "app.lifecycle.config_reload_failed"
+    assert sink.events[-1].level == "error"
+
+
+def test_reload_config_logs_voice_deferred_during_active_session(tmp_path) -> None:
+    async def run() -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            """
+[realtime]
+voice = "cedar"
+"""
+        )
+        sink = MemorySink()
+        runner = _SessionRunner(config=AppConfig(), api_key="sk-test", sink=sink)
+
+        async def fake_run_session(stop_event: asyncio.Event) -> None:
+            await stop_event.wait()
+
+        runner._run_session = fake_run_session
+        await runner.handle_start("session-1")
+        try:
+            assert _reload_config(config_path, runner, sink)
+        finally:
+            await runner.handle_stop("session-1")
+
+        assert any(
+            event.event == "app.lifecycle.config_reload_voice_deferred"
+            and event.attributes == {"old_voice": "marin", "new_voice": "cedar"}
+            for event in sink.events
+        )
 
     asyncio.run(run())
 

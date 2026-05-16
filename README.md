@@ -139,6 +139,13 @@ Example files live in [`examples/`](examples/):
 - [`examples/hyprland-bind.conf`](examples/hyprland-bind.conf)
 - [`docs/live-validation-checklist.md`](docs/live-validation-checklist.md)
 
+Send `SIGHUP` to the long-running `shuvagent run` process to reload
+`config.toml`. Reload applies new `session_max_duration_sec` and
+`output_token_cap` values to an active session. A voice change is accepted for
+future sessions only; the current Realtime session keeps the voice it connected
+with. Invalid config reloads emit `app.lifecycle.config_reload_failed` and keep
+the previous config.
+
 ## Development
 
 Run the validation suite:

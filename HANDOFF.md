@@ -67,6 +67,10 @@ the read-only voice session enough for live validation.
     execution with fakes, and redaction-safe result summaries.
   - `_SessionRunner` prints concise lifecycle status lines to stderr:
     session started, paused, resumed, and stopped with a safe reason.
+  - `shuvagent run` installs a SIGHUP config reload handler. Valid reloads
+    update safety caps immediately; invalid reloads emit
+    `app.lifecycle.config_reload_failed` and keep the old config. Voice changes
+    are logged as deferred for active sessions.
 - **Live verified:** `shuvagent doctor`, the opt-in live Realtime WebSocket
   smoke, synthetic selected-text tool round trip with model audio bytes,
   foreground `shuvagent run`, and control-socket
@@ -76,7 +80,7 @@ the read-only voice session enough for live validation.
 
 ## Validation status
 - `uv run ruff check .` — clean.
-- `uv run pytest` — **119 passed, 3 skipped** (paid live Realtime tests skipped
+- `uv run pytest` — **122 passed, 3 skipped** (paid live Realtime tests skipped
   in the normal suite).
 - `uv run mypy` — clean (23 strict source files).
 - `uv run shuvagent doctor` — pass with `$OPENAI_API_KEY` set and all desktop
@@ -153,6 +157,8 @@ the read-only voice session enough for live validation.
 - `shuvagent/doctor.py` — live-validation preflight checks for config,
   credentials, optional desktop helpers, and Python audio/network modules.
 - `shuvagent/usage.py` — token usage parsing/tracking and rate-limit parsing.
+- `tests/test_cli.py` — CLI command behavior, runner lifecycle, status lines,
+  and SIGHUP config reload behavior.
 - `tests/test_openai_session.py` — wire-format lock-down (no network).
 - `tests/test_session_runner.py` — duration-cap interruption behavior.
 - `tests/integration/test_streaming_loop_with_fake.py` — full streaming loop against `FakeRealtimeSession`.
