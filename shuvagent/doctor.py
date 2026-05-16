@@ -62,7 +62,7 @@ def run_doctor(
     if api_key:
         checks.append(
             DoctorCheck(
-                "openai_api_key",
+                f"{config.realtime.provider}_api_key",
                 "pass",
                 f"${config.realtime.api_key_env} is set",
             )
@@ -70,14 +70,17 @@ def run_doctor(
     else:
         checks.append(
             DoctorCheck(
-                "openai_api_key",
+                f"{config.realtime.provider}_api_key",
                 "fail",
                 f"${config.realtime.api_key_env} is not set",
             )
         )
 
     checks.append(_python_module_check("sounddevice"))
-    checks.append(_python_module_check("websockets"))
+    if config.realtime.provider == "openai":
+        checks.append(_python_module_check("websockets"))
+    elif config.realtime.provider == "gemini":
+        checks.append(_python_module_check("pipecat"))
     checks.extend(
         [
             _command_check("shuvoice", ["shuvoice", "control", "status"]),

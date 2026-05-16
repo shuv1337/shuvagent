@@ -21,10 +21,12 @@ REALTIME_VOICES = frozenset(
         "verse",
     }
 )
+REALTIME_PROVIDERS = frozenset({"openai", "gemini"})
 
 
 @dataclass(frozen=True)
 class RealtimeConfig:
+    provider: str = "openai"
     model: str = "gpt-realtime-2"
     api_key_env: str = "OPENAI_API_KEY"
     voice: str = "marin"
@@ -84,7 +86,16 @@ class AppConfig:
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
 
     def validate(self) -> None:
-        if self.realtime.voice not in REALTIME_VOICES:
+        if self.realtime.provider not in REALTIME_PROVIDERS:
+            allowed = ", ".join(sorted(REALTIME_PROVIDERS))
+            raise ValueError(
+                f"realtime.provider={self.realtime.provider!r} not in allowlist "
+                f"[{allowed}]"
+            )
+        if (
+            self.realtime.provider == "openai"
+            and self.realtime.voice not in REALTIME_VOICES
+        ):
             allowed = ", ".join(sorted(REALTIME_VOICES))
             raise ValueError(
                 f"realtime.voice={self.realtime.voice!r} not in allowlist [{allowed}]"

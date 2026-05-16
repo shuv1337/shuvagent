@@ -5,8 +5,9 @@
 
 ## What this repo is
 
-`shuvagent` is a desktop voice-agent app for Linux/Hyprland built on
-**OpenAI's GPT-Realtime-2 API** (full-duplex voice + tool calls).
+`shuvagent` is a desktop voice-agent app for Linux/Hyprland. It defaults to
+**OpenAI's GPT-Realtime-2 API** (full-duplex voice + tool calls) and has an
+opt-in **Gemini Live via Pipecat** provider path for multi-provider validation.
 
 It is the implementation of the product shape proposed in
 [`shuvoice/PLAN-42-desktop-agent-gpt-realtime-2.md`](../shuvoice/PLAN-42-desktop-agent-gpt-realtime-2.md)
@@ -46,7 +47,7 @@ These are non-negotiable. Violations should be flagged as bugs.
 |---|---|---|
 | Language | Python 3.12 | Matches ShuVoice; mature `websockets`/`pyaudio` ecosystem |
 | Package mgmt | `uv` | Same as ShuVoice |
-| Realtime transport | WebSocket | Trusted local backend; standard API key in env |
+| Realtime transport | WebSocket + Pipecat provider adapter | OpenAI remains the default; Gemini Live is opt-in for multi-provider validation |
 | Audio | PipeWire via `sounddevice` | Matches ShuVoice's PortAudio path |
 | Config | TOML via stdlib `tomllib` | Same as ShuVoice |
 | Tests | `pytest` | Same as ShuVoice |
@@ -99,8 +100,9 @@ add a CLI surface to ShuVoice in a separate PR.
 - Every IPC command: round-trip test through a fake socket.
 - Every redaction helper: tests with secret-like and selected-text
   inputs.
-- Live OpenAI Realtime smoke gated by `OPENAI_API_KEY` env (skipped
-  in CI unless explicitly enabled).
+- Live OpenAI Realtime smoke gated by `OPENAI_API_KEY` env and live
+  Gemini/Pipecat smoke gated by `GOOGLE_API_KEY` env (skipped in CI unless
+  explicitly enabled).
 
 ## Telemetry contract
 

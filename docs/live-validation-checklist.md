@@ -3,7 +3,8 @@
 Use this checklist before treating the read-only voice slice as
 production-validated. These checks intentionally require a real
 Linux/Hyprland desktop, PipeWire/PortAudio devices, ShuVoice on `PATH`,
-`wl-paste`, `hyprctl`, and an OpenAI API key.
+`wl-paste`, `hyprctl`, an OpenAI API key for the default provider, and a
+Google API key for the opt-in Gemini/Pipecat provider check.
 
 ## Preconditions
 
@@ -11,7 +12,10 @@ Linux/Hyprland desktop, PipeWire/PortAudio devices, ShuVoice on `PATH`,
 - `~/.config/shuvagent/config.toml` exists and includes sane safety caps:
   - `realtime.session_max_duration_sec > 0`
   - `0 < realtime.output_token_cap <= 4096`
-- `~/.config/shuvagent/local.dev` contains `OPENAI_API_KEY=...`.
+- `~/.config/shuvagent/local.dev` contains `OPENAI_API_KEY=...` for OpenAI
+  validation.
+- Gemini/Pipecat validation uses a temporary config with
+  `realtime.provider = "gemini"` and `GOOGLE_API_KEY=...`.
 - `shuvoice control status` returns a status or fails cleanly when ShuVoice is
   not running.
 - `wl-paste --primary --no-newline` works for selected text on this desktop.
@@ -52,6 +56,50 @@ Expected result:
 - No raw selected text, clipboard text, transcripts, or API key appears in the
   output.
 
+## Gemini Live Via Pipecat
+
+Create a temporary config that selects Gemini Live:
+
+```toml
+[realtime]
+provider = "gemini"
+model = "models/gemini-3.1-flash-live-preview"
+api_key_env = "GOOGLE_API_KEY"
+voice = "Charon"
+session_max_duration_sec = 300
+output_token_cap = 800
+request_timeout_sec = 10.0
+```
+
+Then run the same foreground/control and voice-path checks with
+`GOOGLE_API_KEY` loaded:
+
+```bash
+set -a
+. ~/.config/shuvagent/local.dev
+set +a
+uv run shuvagent --config /path/to/gemini-config.toml run
+```
+
+The opt-in live connection smoke can be run before the hardware pass:
+
+```bash
+GOOGLE_API_KEY=... SHUVAGENT_RUN_LIVE_GEMINI=1 \
+  uv run pytest tests/integration/test_live_gemini.py -q
+```
+
+Expected result:
+
+- The session is constructed through Pipecat's `GeminiLiveLLMService`.
+- Mic audio is sent as PCM with an explicit sample rate and model audio is
+  returned as 24 kHz PCM.
+- Read-only tool calls still route through `ToolRegistry -> PermissionGate ->
+  handler -> audit event`.
+- Missing `GOOGLE_API_KEY` denies `control start` with
+  `missing_api_key:GOOGLE_API_KEY`.
+- The same safe telemetry boundaries apply; no transcripts, selected text, or
+  API keys appear in logs by default.
+
 ## Issue #1 Closure Gates
 
 Issue #1 should remain open until all of these target-desktop checks have
@@ -61,6 +109,8 @@ fresh evidence:
   `uv run shuvagent control start`.
 - [ ] Audible model speech through the default speaker.
 - [ ] Spoken selected-text Q&A using real `wl-paste --primary` selected text.
+- [ ] Gemini Live/Pipecat session with `GOOGLE_API_KEY` using
+  `models/gemini-3.1-flash-live-preview`.
 - [x] `uv run shuvagent control stop` interrupts active model speech promptly.
 - [x] A foreground/control-socket session with `output_token_cap = 1` stops via
   `agent.session.interrupted reason=output_token_cap` through the mic path.

@@ -1,6 +1,6 @@
 # shuvagent
 
-`shuvagent` is a desktop voice-agent app for Linux/Hyprland built on OpenAI's GPT-Realtime-2 API. It is separate from ShuVoice: ShuVoice owns push-to-talk dictation, while shuvagent owns conversational voice sessions, desktop context reads, and permission-gated tool calls.
+`shuvagent` is a desktop voice-agent app for Linux/Hyprland. It defaults to OpenAI's GPT-Realtime-2 API and also has an opt-in Gemini Live provider through Pipecat. It is separate from ShuVoice: ShuVoice owns push-to-talk dictation, while shuvagent owns conversational voice sessions, desktop context reads, and permission-gated tool calls.
 
 ![shuvagent architecture](assets/architecture.png)
 
@@ -14,6 +14,7 @@ Foundation work is implemented through the first conversational slices:
 - audio capture and playback primitives
 - realtime session protocol plus fake session tests
 - OpenAI Realtime WebSocket session implementation
+- provider factory with an opt-in Pipecat Gemini Live session implementation
 - read-only desktop tools for selection, clipboard, active window, and ShuVoice status
 - opt-in context tool specs for `web_search`, `fetch_web_page`, `screenshot`,
   `local_files`, and `weather`; these are covered by fake-collaborator tests
@@ -45,7 +46,7 @@ The process is intentionally small and explicit:
 - `shuvagent.cli` handles command-line entry points.
 - `shuvagent.control` exposes local IPC over `$XDG_RUNTIME_DIR/shuvagent/control.sock`.
 - `shuvagent.app.ConversationApp` coordinates realtime sessions, audio, tool calls, and ShuVoice pause/resume behavior.
-- `shuvagent.realtime` contains the protocol, fake session, and OpenAI WebSocket implementation.
+- `shuvagent.realtime` contains the protocol, fake session, provider factory, OpenAI WebSocket implementation, and Pipecat Gemini Live implementation.
 - `shuvagent.audio` handles PipeWire/PortAudio capture and playback through `sounddevice`.
 - `shuvagent.tools` routes every tool call through `ToolRegistry`, `PermissionGate`, optional confirmation, and an audit result.
 - `shuvagent.telemetry` emits redacted structured events.
@@ -77,6 +78,7 @@ shuvagent treats these as subprocess boundaries. It does not import ShuVoice int
 - Python 3.12+
 - `uv`
 - `OPENAI_API_KEY` for live GPT-Realtime-2 sessions
+- optional: `GOOGLE_API_KEY` for Pipecat Gemini Live sessions
 - optional: `wl-paste`, `hyprctl`, and `shuvoice` on `PATH` for read-only desktop helpers
 - optional for write-tool development: `wl-copy` and `wtype`
 - optional for context tools: `grim`, `slurp`, and `tesseract` for screenshot
@@ -96,6 +98,21 @@ Edit `~/.config/shuvagent/local.dev` and add:
 OPENAI_API_KEY=...
 ```
 
+For Gemini Live through Pipecat, use the Gemini provider and a Google AI Studio
+key:
+
+```toml
+[realtime]
+provider = "gemini"
+model = "models/gemini-3.1-flash-live-preview"
+api_key_env = "GOOGLE_API_KEY"
+voice = "Charon"
+```
+
+```bash
+GOOGLE_API_KEY=...
+```
+
 ## Run
 
 Start a conversational session:
@@ -104,8 +121,8 @@ Start a conversational session:
 uv run shuvagent run
 ```
 
-`control start` is denied until the configured API key environment variable is
-available.
+`control start` is denied until the configured provider API key environment
+variable is available.
 
 Check control status:
 
@@ -175,13 +192,21 @@ uv run mypy
 uv run pytest
 ```
 
-Live OpenAI smoke tests are gated by `OPENAI_API_KEY`; fake-session tests run without network credentials.
+Live provider smoke tests are gated by provider-specific environment variables;
+fake-session tests run without network credentials.
 
 Opt-in live Realtime smoke:
 
 ```bash
 OPENAI_API_KEY=... SHUVAGENT_RUN_LIVE_REALTIME=1 \
   uv run pytest tests/integration/test_live_realtime.py -q
+```
+
+Opt-in live Gemini/Pipecat smoke:
+
+```bash
+GOOGLE_API_KEY=... SHUVAGENT_RUN_LIVE_GEMINI=1 \
+  uv run pytest tests/integration/test_live_gemini.py -q
 ```
 
 Manual validation before release is tracked in

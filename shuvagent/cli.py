@@ -30,9 +30,9 @@ from shuvagent.doctor import doctor_exit_code, format_doctor_checks, run_doctor
 from shuvagent.env_loader import load_env_file
 from shuvagent.live_qa import format_issue1_qa, issue1_qa_exit_code
 from shuvagent.paths import default_local_env_path
-from shuvagent.realtime.openai_session import (
-    OpenAIRealtimeSession,
-    OpenAISessionConfig,
+from shuvagent.realtime.providers import (
+    RealtimeSessionFactoryConfig,
+    build_realtime_session,
 )
 from shuvagent.telemetry.schema import TelemetryEvent
 from shuvagent.telemetry.sink import JsonLineSink
@@ -318,15 +318,11 @@ class _SessionRunner:
             registry.register(spec)
         gate = PermissionGate(registry.specs(), window_snapshot=get_active_window)
 
-        session = OpenAIRealtimeSession(
-            OpenAISessionConfig(
+        session = build_realtime_session(
+            RealtimeSessionFactoryConfig(
+                realtime=self._config.realtime,
                 api_key=self._api_key,
-                model=self._config.realtime.model,
-                voice=self._config.realtime.voice,
-                reasoning_effort=self._config.realtime.reasoning_effort,
                 tools=tuple(tool_specs),
-                max_output_tokens=self._config.realtime.output_token_cap,
-                request_timeout_sec=self._config.realtime.request_timeout_sec,
             )
         )
         app = ConversationApp(session=session, registry=registry, gate=gate)

@@ -1,6 +1,7 @@
 config_version = 1
 
 [realtime]
+provider = "openai"
 model = "gpt-realtime-2"
 api_key_env = "OPENAI_API_KEY"
 voice = "marin"
@@ -8,6 +9,14 @@ reasoning_effort = "low"
 session_max_duration_sec = 300
 output_token_cap = 800
 request_timeout_sec = 10.0
+
+# Gemini Live via Pipecat is opt-in. Uncomment this block shape when testing
+# Gemini credentials and model access:
+#
+# provider = "gemini"
+# model = "models/gemini-3.1-flash-live-preview"
+# api_key_env = "GOOGLE_API_KEY"
+# voice = "Charon"
 
 [audio]
 capture_sample_rate = 24000

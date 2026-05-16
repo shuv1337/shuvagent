@@ -5,6 +5,7 @@ description = "Desktop voice-agent app for Linux/Hyprland."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "pipecat-ai[google]>=1.2.1",
     "sounddevice>=0.5.3",
     "websockets>=13.0",
 ]
@@ -45,6 +46,8 @@ files = [
     "shuvagent/doctor.py",
     "shuvagent/live_qa.py",
     "shuvagent/realtime/openai_session.py",
+    "shuvagent/realtime/pipecat_gemini_session.py",
+    "shuvagent/realtime/providers.py",
     "shuvagent/tools",
     "shuvagent/selection.py",
     "shuvagent/usage.py",

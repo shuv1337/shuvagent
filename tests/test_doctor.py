@@ -59,3 +59,27 @@ def test_doctor_cli_returns_nonzero_for_missing_api_key(
     assert code == 1
     assert "FAIL openai_api_key" in out
     assert "sk-" not in out
+
+
+def test_doctor_uses_provider_api_key_name(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[realtime]
+provider = "gemini"
+api_key_env = "GOOGLE_API_KEY"
+voice = "Charon"
+output_token_cap = 10
+"""
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "google-secret")
+
+    checks = run_doctor(config, env_path=tmp_path / "missing.env", environ={})
+    rendered = format_doctor_checks(checks)
+
+    assert "PASS gemini_api_key" in rendered
+    assert "google-secret" not in rendered
+    assert "pipecat" in rendered

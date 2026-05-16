@@ -3,10 +3,11 @@
 Issue: `PRD: Live validation and production hardening for read-only voice slice`
 
 Status: source hardening, local validation, live OpenAI Realtime smoke,
-foreground/control-socket live smoke, ShuVoice arbitration drills, and the
-foreground microphone-path `output_token_cap = 1` drill are complete. The issue
-is not release-complete until the remaining human/hardware-driven microphone,
-speaker, and spoken selected-text Q&A acceptance gates pass.
+foreground/control-socket live smoke, ShuVoice arbitration drills, the
+foreground microphone-path `output_token_cap = 1` drill, and source-level
+multi-provider/Pipecat Gemini Live wiring are complete. The issue is not
+release-complete until the remaining human/hardware-driven microphone, speaker,
+spoken selected-text Q&A, and live Gemini/Pipecat acceptance gates pass.
 
 ## Local Evidence
 
@@ -30,6 +31,8 @@ speaker, and spoken selected-text Q&A acceptance gates pass.
 | Privacy/redaction | `shuvagent/telemetry/redact.py`; `tests/test_redaction.py`; streaming tool telemetry excludes raw tool results; no doctor output renders API keys |
 | Opt-in live Realtime smoke | `tests/integration/test_live_realtime.py`; skipped without both API key and explicit flag; passed with credentials and `SHUVAGENT_RUN_LIVE_REALTIME=1`, including the full default read-only tool round |
 | Realtime wire format | `tests/test_openai_session.py`; live smoke caught and fixed stale beta header/session payload drift; GA output audio and function-call item events are covered |
+| Multi-provider realtime factory | `shuvagent/realtime/providers.py`; `tests/test_realtime_providers.py`; OpenAI remains default and Gemini is opt-in |
+| Gemini Live via Pipecat | `shuvagent/realtime/pipecat_gemini_session.py`; `pipecat-ai[google]`; `tests/test_pipecat_gemini_session.py`; live human/provider validation pending |
 | Rate-limit/API error telemetry | `RealtimeApiEvent`; `ConversationApp._stream_api_events()`; `tests/test_openai_session.py`; `tests/test_usage.py` |
 | Audio overflow/status/device error telemetry | `shuvagent/audio/runtime.py`; `audio.device_error`; `tests/test_audio_runtime.py`; `tests/test_session_runner.py` |
 | Stderr lifecycle status indicator | `_SessionRunner` status writer; `tests/test_cli.py`; `tests/test_session_runner.py` |
@@ -85,6 +88,8 @@ speaker, and spoken selected-text Q&A acceptance gates pass.
 | US38 usage/rate-limit fixtures | verified | usage and streaming fake tests |
 | US39 mypy coverage expanded where stable | verified | `uv run mypy` over 23 strict source files |
 | US40 manual QA checklist | verified artifact | `docs/live-validation-checklist.md`; execution pending |
+| US41 OpenAI remains the default provider | local verified | `RealtimeConfig.provider = "openai"`; provider factory tests |
+| US42 Gemini Live provider through Pipecat | source verified, live pending | `PipecatGeminiRealtimeSession` wraps Pipecat `GeminiLiveLLMService`; `GOOGLE_API_KEY`/`models/gemini-3.1-flash-live-preview` live gate pending |
 | Out of scope remains out of scope | verified | no write tools, persistent memory, overlay, MCP, WebRTC, Maple export, or ShuVoice repo edits |
 
 ## Current Validation Commands
@@ -97,6 +102,7 @@ uv run mypy
 uv run pytest
 uv run shuvagent doctor
 SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q
+GOOGLE_API_KEY=... uv run shuvagent --config <gemini-config> run
 ```
 
 Current result:
@@ -114,6 +120,9 @@ Current result:
   names for the final human run.
 - outbound Realtime frames include `max_output_tokens` matching
   `realtime.output_token_cap`.
+- Gemini/Pipecat live validation is newly required and still needs target
+  desktop evidence with `GOOGLE_API_KEY` and
+  `models/gemini-3.1-flash-live-preview`.
 
 Current live-smoke evidence:
 
@@ -206,6 +215,8 @@ unit/fake-session evidence or direct API injection alone:
    desktop.
 2. Selected-text Q&A end-to-end by spoken microphone prompt with real
    `wl-paste` selected text.
+3. Gemini Live/Pipecat end-to-end session using `GOOGLE_API_KEY` and
+   `models/gemini-3.1-flash-live-preview`.
 
 ## Additional Live ShuVoice Pre-Start Evidence
 

@@ -8,6 +8,7 @@ from shuvagent.config import load_config
 def test_loads_defaults_when_config_missing(tmp_path: Path) -> None:
     config = load_config(tmp_path / "missing.toml")
 
+    assert config.realtime.provider == "openai"
     assert config.realtime.model == "gpt-realtime-2"
     assert config.realtime.voice == "marin"
     assert config.control.socket.name == "control.sock"
@@ -50,6 +51,38 @@ voice = "fable"
     )
 
     with pytest.raises(ValueError, match="not in allowlist"):
+        load_config(path)
+
+
+def test_gemini_provider_allows_gemini_voice(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+[realtime]
+provider = "gemini"
+api_key_env = "GOOGLE_API_KEY"
+model = "models/gemini-3.1-flash-live-preview"
+voice = "Charon"
+"""
+    )
+
+    config = load_config(path)
+
+    assert config.realtime.provider == "gemini"
+    assert config.realtime.api_key_env == "GOOGLE_API_KEY"
+    assert config.realtime.voice == "Charon"
+
+
+def test_rejects_unknown_realtime_provider(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+[realtime]
+provider = "ollama"
+"""
+    )
+
+    with pytest.raises(ValueError, match="realtime.provider"):
         load_config(path)
 
 

@@ -27,6 +27,7 @@ class FakeRealtimeSession:
         self.fail_cancel_response = False
         self.state = SessionState.CLOSED
         self.is_open = False
+        self.is_paused = False
         self.audio_out = self._iter_queue(self._audio_out_queue)
         self.tool_calls = self._iter_queue(self._tool_call_queue)
         self.errors = self._iter_queue(self._error_queue)
@@ -90,10 +91,12 @@ class FakeRealtimeSession:
 
     async def pause(self, reason: str) -> None:
         del reason
+        self.is_paused = True
         self.state = SessionState.PAUSED
 
     async def resume(self, reason: str) -> None:
         del reason
+        self.is_paused = False
         self.state = SessionState.READY
 
     async def _iter_queue(self, queue: asyncio.Queue) -> AsyncIterator:

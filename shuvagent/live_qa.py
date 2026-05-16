@@ -6,6 +6,8 @@ ISSUE1_CLOSURE_GATES: tuple[str, ...] = (
     "Spoken microphone input through `shuvagent run` + `shuvagent control start`.",
     "Audible model speech through the default speaker.",
     "Spoken selected-text Q&A using real `wl-paste --primary` selected text.",
+    "Gemini Live/Pipecat session using `GOOGLE_API_KEY` and "
+    "`models/gemini-3.1-flash-live-preview`.",
 )
 
 ISSUE1_SAFE_EVENTS: tuple[str, ...] = (
