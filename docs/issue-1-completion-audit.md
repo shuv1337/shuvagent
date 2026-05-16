@@ -2,10 +2,11 @@
 
 Issue: `PRD: Live validation and production hardening for read-only voice slice`
 
-Status: source hardening, local validation, live OpenAI Realtime smoke, and
-foreground/control-socket live smoke are complete. The issue is not
-release-complete until manual Linux/Hyprland microphone/speaker and ShuVoice
-arbitration QA pass.
+Status: source hardening, local validation, live OpenAI Realtime smoke,
+foreground/control-socket live smoke, and ShuVoice arbitration drills are
+complete. The issue is not release-complete until the remaining
+human/hardware-driven microphone, speaker, spoken selected-text Q&A, and
+foreground output-token-cap acceptance gates pass.
 
 ## Local Evidence
 
@@ -98,7 +99,7 @@ SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime
 Current result:
 
 - `ruff`: pass.
-- `mypy`: pass for 19 strict source files.
+- `mypy`: pass for 23 strict source files.
 - `pytest`: pass with the paid live Realtime tests skipped when the explicit
   flag is absent.
 - `doctor`: pass with config, safety caps, `$OPENAI_API_KEY`, `sounddevice`,
@@ -111,8 +112,8 @@ Current live-smoke evidence:
 
 ```bash
 SHUVAGENT_RUN_LIVE_REALTIME=1 uv run pytest tests/integration/test_live_realtime.py -q
-# ..                                                                       [100%]
-# 2 passed in 10.55s
+# ...                                                                      [100%]
+# 3 passed in 37.34s
 ```
 
 `uv run shuvagent doctor` reports all checks passing, including the API key and
@@ -189,18 +190,18 @@ OPENAI_API_KEY=sk-test-invalid uv run shuvagent --config <temp-config> status
 # OK idle
 ```
 
-## Unverified Live Gates
+## Remaining Unverified Live Gates
 
 These are required by issue #1 and cannot be considered complete from local
-unit/fake-session evidence alone:
+unit/fake-session evidence or direct API injection alone:
 
 1. Real microphone input and speaker playback on the target Linux/Hyprland
    desktop.
 2. Selected-text Q&A end-to-end by spoken microphone prompt with real
    `wl-paste` selected text.
 3. Prompt `control stop` behavior during active model speech.
-4. Full control-socket stop-on-output-token-cap behavior with spoken or
-   injected session input.
+4. Full foreground/control-socket stop-on-output-token-cap behavior with spoken
+   or microphone-path session input.
 
 ## Additional Live ShuVoice Pre-Start Evidence
 
@@ -342,7 +343,7 @@ path takes real microphone input.
 
 ## Completion Rule
 
-Do not close issue #1 until every unverified live gate above has concrete
-evidence from the target desktop. Passing local tests alone is not sufficient
-for this PRD because live API, audio hardware, and ShuVoice arbitration are
-explicit acceptance requirements.
+Do not close issue #1 until every remaining unverified live gate above has
+concrete evidence from the target desktop. Passing local tests alone is not
+sufficient for this PRD because live API, audio hardware, and microphone-path
+behavior are explicit acceptance requirements.

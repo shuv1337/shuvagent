@@ -75,8 +75,10 @@ the read-only voice session enough for live validation.
   smoke, synthetic selected-text tool round trip with model audio bytes,
   foreground `shuvagent run`, and control-socket
   `status/start/status/stop/status` against the live backend.
-- **Not done:** human microphone/speaker QA and real ShuVoice arbitration
-  drills from `docs/live-validation-checklist.md`.
+- **Not done:** remaining human/hardware QA from
+  `docs/live-validation-checklist.md`: spoken microphone input, audible speaker
+  playback, spoken selected-text Q&A, stop during active model speech, and the
+  foreground/control-socket output-token-cap drill through the mic path.
 
 ## Validation status
 - `uv run ruff check .` — clean.
@@ -174,7 +176,7 @@ the read-only voice session enough for live validation.
 1. **Run manual hardware QA** with `docs/live-validation-checklist.md`,
    especially spoken mic input, speaker playback, selected-text Q&A by voice,
    stop during active model speech, and a foreground/control-socket
-   output-token-cap stop drill.
+   output-token-cap stop drill through the mic path.
 2. **Consider further strict mypy expansion** to remaining modules once
    runtime APIs settle.
 

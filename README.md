@@ -28,8 +28,10 @@ Foundation work is implemented through the first conversational slices:
 
 Source-level hardening is implemented and the opt-in live Realtime smoke has
 passed locally with credentials. Manual microphone/speaker and ShuVoice
-arbitration QA is still required before treating v0.1.0 as
-production-validated.
+arbitration QA is mostly complete; the remaining release gates are the
+human/hardware checks for spoken microphone input, audible speaker playback,
+spoken selected-text Q&A, stop during active speech, and the mic-path
+output-token-cap drill.
 
 ## Architecture
 
