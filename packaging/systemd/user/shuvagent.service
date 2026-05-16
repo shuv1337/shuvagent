@@ -1,0 +1,16 @@
+[Unit]
+Description=shuvagent desktop voice agent
+Documentation=https://github.com/shuv/shuvagent
+After=graphical-session.target pipewire.service
+Wants=pipewire.service
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=%t
+ExecStart=/usr/bin/env shuvagent run
+ExecStopPost=-/usr/bin/env shuvagent control stop
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=default.target

@@ -110,6 +110,15 @@ Use the Python module entry point:
 uv run python -m shuvagent --help
 ```
 
+## systemd
+
+A user service is available at
+[`packaging/systemd/user/shuvagent.service`](packaging/systemd/user/shuvagent.service).
+It runs `shuvagent run`, restarts on failure, and performs a best-effort
+`shuvagent control stop` during service teardown. See
+[`packaging/README.md`](packaging/README.md) for install and verification
+commands.
+
 ## Configuration
 
 Default paths:
