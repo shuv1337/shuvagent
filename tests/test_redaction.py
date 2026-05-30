@@ -1,5 +1,10 @@
+import io
+import json
+
+from shuvagent import __version__
 from shuvagent.telemetry.redact import redact_value, summarize_user_text
 from shuvagent.telemetry.schema import TelemetryEvent
+from shuvagent.telemetry.sink import JsonLineSink
 
 
 def test_redacts_openai_key_in_message() -> None:
@@ -70,3 +75,93 @@ def test_event_envelope_matches_otel_shape_and_redacts() -> None:
     assert payload["service.name"] == "shuvagent"
     assert payload["service.version"] == "0.1.0"
     assert payload["attributes"]["api_key"] == "[REDACTED-API-KEY]"
+
+
+def test_to_json_dict_debug_flag_reveals_raw_text_and_marks_event() -> None:
+    """The real emit path (to_json_dict) must un-redact attributes only under
+    the explicit debug flag and stamp the privacy marker (US18)."""
+    event = TelemetryEvent(
+        event="tool.executed",
+        attributes={"selected_text": "secret selected text user@example.com"},
+    )
+
+    payload = event.to_json_dict(debug_log_raw_text=True)
+
+    assert (
+        payload["attributes"]["selected_text"]
+        == "secret selected text user@example.com"
+    )
+    assert payload["attributes"]["privacy.raw_text_logging"] is True
+
+
+def test_to_json_dict_default_redacts_and_omits_raw_text_marker() -> None:
+    """Default (no debug flag) must redact and NOT stamp the marker (US18)."""
+    event = TelemetryEvent(
+        event="tool.executed",
+        attributes={"selected_text": "secret user@example.com"},
+    )
+
+    payload = event.to_json_dict()
+
+    assert payload["attributes"]["selected_text"] == "secret [REDACTED-EMAIL]"
+    assert "privacy.raw_text_logging" not in payload["attributes"]
+
+
+def test_json_line_sink_emit_serializes_full_maple_compatible_envelope() -> None:
+    """JsonLineSink.emit must serialize the full OTEL/Maple-compatible envelope
+    (timestamp, level, service, event, ids, session, attributes) (US29)."""
+    stream = io.StringIO()
+    sink = JsonLineSink(stream=stream)
+
+    event = TelemetryEvent(
+        event="agent.session.connected",
+        session_id="sess-1",
+        attributes={"k": "v"},
+    )
+    sink.emit(event)
+
+    payload = json.loads(stream.getvalue().strip())
+    assert payload["event"] == "agent.session.connected"
+    assert payload["level"] == "info"
+    assert payload["service.name"] == "shuvagent"
+    assert payload["service.version"] == __version__
+    assert payload["session_id"] == "sess-1"
+    assert isinstance(payload["trace_id"], str) and len(payload["trace_id"]) == 32
+    assert isinstance(payload["span_id"], str) and len(payload["span_id"]) == 16
+    assert payload["timestamp"].endswith("Z")
+    assert payload["attributes"] == {"k": "v"}
+
+
+def test_json_line_sink_default_redacts_secrets_on_emit() -> None:
+    """The serialized emit path redacts secrets by default (US17/US29)."""
+    stream = io.StringIO()
+    sink = JsonLineSink(stream=stream)
+
+    sink.emit(
+        TelemetryEvent(
+            event="tool.executed",
+            attributes={"blob": "key sk-abcdefghijklmnopqrstuvwxyz123456"},
+        )
+    )
+
+    rendered = stream.getvalue()
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in rendered
+    assert "[REDACTED-API-KEY]" in rendered
+
+
+def test_json_line_sink_debug_flag_emits_raw_text_and_marker() -> None:
+    """With debug_log_raw_text=True the sink passes raw text through and marks
+    the event so privacy-sensitive diagnostics are auditable (US18)."""
+    stream = io.StringIO()
+    sink = JsonLineSink(stream=stream, debug_log_raw_text=True)
+
+    sink.emit(
+        TelemetryEvent(
+            event="tool.executed",
+            attributes={"selected_text": "raw private text"},
+        )
+    )
+
+    payload = json.loads(stream.getvalue().strip())
+    assert payload["attributes"]["selected_text"] == "raw private text"
+    assert payload["attributes"]["privacy.raw_text_logging"] is True

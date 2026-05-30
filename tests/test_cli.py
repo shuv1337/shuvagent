@@ -136,6 +136,45 @@ def test_session_runner_start_stop_and_shutdown_are_idempotent() -> None:
     asyncio.run(run())
 
 
+def test_session_runner_stop_is_bounded_and_force_cancels_stuck_session() -> None:
+    """handle_stop must return within the bound and force-cancel a session
+    that ignores stop_event (the 'graceful but bounded' guarantee, US23)."""
+
+    async def run() -> None:
+        sink = MemorySink()
+        runner = _SessionRunner(
+            config=AppConfig(),
+            api_key="sk-test",
+            sink=sink,
+            stop_timeout_sec=0.05,
+        )
+
+        async def stuck_run_session(stop_event: asyncio.Event) -> None:
+            del stop_event  # deliberately ignore the cooperative stop signal
+            await asyncio.Event().wait()  # never returns on its own
+
+        runner._run_session = stuck_run_session
+
+        await runner.handle_start("session-stuck")
+        task = runner._task
+        assert task is not None
+
+        loop = asyncio.get_running_loop()
+        before = loop.time()
+        await runner.handle_stop("session-stuck")
+        elapsed = loop.time() - before
+
+        # Bounded: returns well within a small multiple of the stop timeout.
+        assert elapsed < 2.0
+        # Force-cancelled: the stuck task did not finish on its own.
+        assert task.cancelled()
+        assert runner._task is None
+        assert runner._stop_event is None
+        assert runner._session_id is None
+
+    asyncio.run(run())
+
+
 def test_reload_config_applies_safety_caps_to_runner(tmp_path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
