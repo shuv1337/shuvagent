@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>shuvagent Issue #1 Human Validation Walkthrough</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172026;
+      --muted: #5d6b73;
+      --line: #d9e1e5;
+      --panel: #f6f8f9;
+      --accent: #0c6b58;
+      --accent-2: #9b4f0f;
+      --danger: #9d2b25;
+      --code: #102029;
+      --code-bg: #eef3f5;
+      --paper: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfc;
+    }
+
+    .wrap {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 28px 24px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 18px;
+      padding-top: 42px;
+      padding-bottom: 36px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.15;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 4.5rem);
+      letter-spacing: 0;
+      max-width: 980px;
+    }
+
+    h2 {
+      font-size: 1.55rem;
+      margin-top: 46px;
+      padding-top: 6px;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      margin-top: 22px;
+    }
+
+    p {
+      margin: 10px 0;
+      max-width: 900px;
+    }
+
+    .lede {
+      font-size: 1.08rem;
+      color: var(--muted);
+      max-width: 920px;
+    }
+
+    .meta-grid,
+    .gate-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .pill,
+    .gate {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 12px 14px;
+      min-height: 72px;
+    }
+
+    .pill strong,
+    .gate strong {
+      display: block;
+      font-size: 0.83rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+
+    .status {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .ok {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .warn {
+      color: var(--accent-2);
+      font-weight: 700;
+    }
+
+    nav {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+    }
+
+    nav .wrap {
+      padding-top: 14px;
+      padding-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    nav a {
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 0.92rem;
+      background: #fbfcfc;
+    }
+
+    section {
+      border-bottom: 1px solid var(--line);
+    }
+
+    section:last-of-type {
+      border-bottom: 0;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: #f2f8f6;
+      padding: 14px 16px;
+      margin: 18px 0;
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: #fff6f4;
+    }
+
+    .warnbox {
+      border-left-color: var(--accent-2);
+      background: #fff8ef;
+    }
+
+    code,
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    code {
+      color: var(--code);
+      background: var(--code-bg);
+      border-radius: 4px;
+      padding: 0.12rem 0.28rem;
+      font-size: 0.94em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #0f1b22;
+      color: #eef7f8;
+      border-radius: 8px;
+      padding: 15px 16px;
+      line-height: 1.45;
+      font-size: 0.92rem;
+      margin: 12px 0 18px;
+    }
+
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+      font-size: 0.95rem;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 12px;
+    }
+
+    th {
+      background: var(--panel);
+    }
+
+    ul,
+    ol {
+      padding-left: 1.35rem;
+    }
+
+    li {
+      margin: 7px 0;
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin: 16px 0;
+      background: #fff;
+    }
+
+    .step h3 {
+      margin-top: 0;
+    }
+
+    .checkbox {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      white-space: pre-wrap;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    [data-sharecard-root] {
+      width: 1200px;
+      min-height: 630px;
+      padding: 72px;
+      background: #fbfcfc;
+      color: var(--ink);
+      display: none;
+      border: 1px solid var(--line);
+    }
+
+    [data-sharecard-root] h1 {
+      font-size: 72px;
+      max-width: 950px;
+      margin-bottom: 24px;
+    }
+
+    [data-sharecard-root] p {
+      font-size: 30px;
+      max-width: 960px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 760px) {
+      .wrap {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div data-sharecard-root>
+    <h1>shuvagent Issue #1 Human Validation</h1>
+    <p>Step-by-step target desktop walkthrough for mic, speaker, selected text, ShuVoice arbitration, privacy, and Gemini Live evidence.</p>
+  </div>
+
+  <header>
+    <div class="wrap hero">
+      <h1>shuvagent Issue #1 Human Testing And Validation Walkthrough</h1>
+      <p class="lede">Use this document to collect the human and hardware evidence needed before GitHub issue #1 can be closed. It assumes the source implementation and automated checks are already complete; the remaining work is live target-desktop validation.</p>
+      <div class="meta-grid">
+        <div class="pill"><strong>Project</strong>shuvagent</div>
+        <div class="pill"><strong>Target</strong>Linux / Hyprland / PipeWire desktop</div>
+        <div class="pill"><strong>Issue</strong>#1, read-only voice slice production hardening</div>
+        <div class="pill"><strong>Current Status</strong><span class="status">Blocked on live evidence</span></div>
+      </div>
+    </div>
+  </header>
+
+  <nav>
+    <div class="wrap">
+      <a href="#rules">Evidence Rules</a>
+      <a href="#prep">Preparation</a>
+      <a href="#preflight">Preflight</a>
+      <a href="#openai">OpenAI Voice Pass</a>
+      <a href="#selected">Selected Text</a>
+      <a href="#shuvoice">ShuVoice</a>
+      <a href="#gemini">Gemini</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#closure">Closure Packet</a>
+    </div>
+  </nav>
+
+  <main>
+    <section id="rules">
+      <div class="wrap">
+        <h2>1. Evidence Rules</h2>
+        <div class="callout danger">
+          <strong>Do not record sensitive content.</strong>
+          <p>Do not paste transcripts, raw selected text, clipboard contents, audio samples, screenshots containing private text, or API keys into the issue, logs, commit messages, chats, or this report. The safe evidence boundary is control command output, event names, structured reasons, counts, hashes, pass/fail status, and whether audio was heard.</p>
+        </div>
+        <p>The goal is to prove the live desktop path works while preserving the product privacy contract: no raw user text in logs or telemetry by default.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Allowed Evidence</th>
+              <th>Forbidden Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>OK started</code>, <code>OK active</code>, <code>OK stopped</code>, <code>OK idle</code></td>
+              <td>Full spoken question or model answer</td>
+            </tr>
+            <tr>
+              <td>Safe telemetry event names such as <code>audio.capture_chunk</code></td>
+              <td>Raw transcript text or audio bytes</td>
+            </tr>
+            <tr>
+              <td>Structured reasons such as <code>missing_api_key:GOOGLE_API_KEY</code></td>
+              <td>Actual API key values</td>
+            </tr>
+            <tr>
+              <td>Selected-text length/hash prefix</td>
+              <td>The selected text or clipboard text itself</td>
+            </tr>
+            <tr>
+              <td>Human statement: "audio was heard"</td>
+              <td>Private desktop screenshots that reveal content</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Required closure gates</h3>
+        <div class="gate-grid">
+          <div class="gate"><strong>Gate 1</strong>Spoken microphone input through <code>shuvagent run</code> plus <code>shuvagent control start</code>.</div>
+          <div class="gate"><strong>Gate 2</strong>Audible model speech through the default speaker.</div>
+          <div class="gate"><strong>Gate 3</strong>Spoken selected-text Q&amp;A using real <code>wl-paste --primary</code> selected text.</div>
+          <div class="gate"><strong>Gate 4</strong>Gemini Live/Pipecat session using <code>GOOGLE_API_KEY</code> and <code>models/gemini-3.1-flash-live-preview</code>.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="prep">
+      <div class="wrap">
+        <h2>2. Preparation</h2>
+        <p>Run all commands from the repository root:</p>
+        <pre><code>cd /home/shuv/repos/shuvagent</code></pre>
+        <p>Confirm the working tree is not carrying unrelated changes before validation:</p>
+        <pre><code>git status --short --branch</code></pre>
+        <p>Expected result:</p>
+        <pre><code>## main...origin/main</code></pre>
+        <p>Synchronize dependencies if needed:</p>
+        <pre><code>uv sync</code></pre>
+
+        <h3>Config and environment files</h3>
+        <p>The runtime reads:</p>
+        <ul>
+          <li><code>~/.config/shuvagent/config.toml</code> for app configuration.</li>
+          <li><code>~/.config/shuvagent/local.dev</code> for local environment variables.</li>
+          <li><code>$XDG_RUNTIME_DIR/shuvagent/control.sock</code> for control IPC.</li>
+          <li><code>~/.local/share/shuvagent/</code> for local runtime output.</li>
+        </ul>
+        <p>Confirm safety caps are present and bounded:</p>
+        <pre><code>uv run shuvagent doctor</code></pre>
+        <p>The doctor must report config and caps as passing. It must not print API key values.</p>
+
+        <h3>Credential check without leaking values</h3>
+        <pre><code>{ printenv | rg '^(GOOGLE_API_KEY|OPENAI_API_KEY)=' | sed -E 's/=.*$/=&lt;set&gt;/'; \
+if [ -f ~/.config/shuvagent/local.dev ]; then \
+  sed -n 's/^\(GOOGLE_API_KEY\|OPENAI_API_KEY\)=.*/\1=&lt;set&gt;/p' ~/.config/shuvagent/local.dev; \
+fi; } | sort -u</code></pre>
+        <p>Expected for full validation:</p>
+        <pre><code>GOOGLE_API_KEY=&lt;set&gt;
+OPENAI_API_KEY=&lt;set&gt;</code></pre>
+        <p>If <code>GOOGLE_API_KEY</code> is absent, run every non-Gemini gate and leave the Gemini gate explicitly blocked.</p>
+      </div>
+    </section>
+
+    <section id="preflight">
+      <div class="wrap">
+        <h2>3. Automated Preflight</h2>
+        <p>Run the issue-specific QA helper first. This prints the same closure gates that must be satisfied by human/hardware evidence.</p>
+        <pre><code>uv run shuvagent issue1-qa</code></pre>
+        <p>Expected passing preflight items include:</p>
+        <ul>
+          <li>config loaded and validated</li>
+          <li>duration cap present</li>
+          <li>output token cap present</li>
+          <li>local env loaded</li>
+          <li>OpenAI key present for OpenAI validation</li>
+          <li><code>sounddevice</code> available</li>
+          <li><code>websockets</code> available</li>
+          <li><code>shuvoice</code> probe succeeds</li>
+          <li><code>wl-paste</code> probe succeeds</li>
+          <li><code>hyprctl</code> probe succeeds</li>
+        </ul>
+        <p>Expected unchecked closure gates printed by the helper:</p>
+        <pre><code>[ ] Spoken microphone input through `shuvagent run` + `shuvagent control start`.
+[ ] Audible model speech through the default speaker.
+[ ] Spoken selected-text Q&amp;A using real `wl-paste --primary` selected text.
+[ ] Gemini Live/Pipecat session using `GOOGLE_API_KEY` and `models/gemini-3.1-flash-live-preview`.</code></pre>
+
+        <h3>Baseline validation commands</h3>
+        <p>Run these if the code has changed since the last committed validation. They are not a substitute for the live gates.</p>
+        <pre><code>uv run ruff check .
+uv run mypy
+uv run pytest</code></pre>
+      </div>
+    </section>
+
+    <section id="openai">
+      <div class="wrap">
+        <h2>4. OpenAI Foreground, Control, Mic, And Speaker Pass</h2>
+        <div class="callout">
+          <strong>Goal.</strong>
+          <p>Prove that the real foreground process, control socket, microphone capture, model audio response, and speaker playback work together on the target desktop.</p>
+        </div>
+
+        <div class="step">
+          <h3>Terminal 1: start the foreground app</h3>
+          <pre><code>cd /home/shuv/repos/shuvagent
+uv run shuvagent run</code></pre>
+          <p>Expected evidence:</p>
+          <ul>
+            <li>The process stays in the foreground.</li>
+            <li>It prints or logs the control socket path.</li>
+            <li>It does not print API keys or raw transcripts.</li>
+          </ul>
+        </div>
+
+        <div class="step">
+          <h3>Terminal 2: drive the control socket</h3>
+          <pre><code>cd /home/shuv/repos/shuvagent
+uv run shuvagent control status
+uv run shuvagent control start
+uv run shuvagent control status</code></pre>
+          <p>Expected safe evidence:</p>
+          <pre><code>OK idle
+OK started session=&lt;id&gt;
+OK active session=&lt;id&gt;</code></pre>
+        </div>
+
+        <div class="step">
+          <h3>Human voice prompt</h3>
+          <ol>
+            <li>Speak a short, non-sensitive test question into the default microphone.</li>
+            <li>Wait for model speech.</li>
+            <li>Confirm whether audio was heard through the default speaker.</li>
+          </ol>
+          <p>Safe evidence to record:</p>
+          <ul>
+            <li><code>audio.capture_chunk</code> was observed.</li>
+            <li><code>realtime.first_audio_response_latency_ms</code> was observed.</li>
+            <li><code>audio.playback_chunk</code> was observed.</li>
+            <li>Human result: audio heard: yes/no.</li>
+          </ul>
+        </div>
+
+        <div class="step">
+          <h3>Stop the session</h3>
+          <pre><code>uv run shuvagent control stop
+uv run shuvagent control status</code></pre>
+          <p>Expected evidence:</p>
+          <pre><code>OK stopped
+OK idle</code></pre>
+          <p>Expected safe telemetry includes <code>agent.session.stopped</code> and, when speech is interrupted, <code>realtime.response_cancel_requested</code> or another structured stop reason.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="selected">
+      <div class="wrap">
+        <h2>5. Spoken Selected-Text Q&amp;A</h2>
+        <div class="callout danger">
+          <strong>Privacy boundary.</strong>
+          <p>Do not record the selected text. Record only that selection was present, its length or hash prefix if available, tool event names, and whether the spoken answer was relevant.</p>
+        </div>
+        <ol>
+          <li>Select a short, non-sensitive paragraph in any Hyprland window.</li>
+          <li>Confirm the primary selection path works without printing the selected content:</li>
+        </ol>
+        <pre><code>wl-paste --primary --no-newline | wc -c</code></pre>
+        <p>Expected evidence: a positive byte count. Do not capture the actual selected text.</p>
+        <ol start="3">
+          <li>Start <code>uv run shuvagent run</code> if it is not already running.</li>
+          <li>Start a session with <code>uv run shuvagent control start</code>.</li>
+          <li>Ask by voice: "What does the selected text mean?"</li>
+          <li>Listen for the answer and stop the session.</li>
+        </ol>
+        <p>Expected safe telemetry and audit evidence:</p>
+        <ul>
+          <li><code>tool.requested</code> for the selected-text read tool.</li>
+          <li><code>tool.executed</code> for the selected-text read tool.</li>
+          <li>No raw selected text in logs or telemetry.</li>
+          <li>Human result: answer was relevant to the selected text: yes/no.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="shuvoice">
+      <div class="wrap">
+        <h2>6. ShuVoice Arbitration</h2>
+        <p>ShuVoice owns the mic during push-to-talk bursts. shuvagent must deny or pause itself rather than fighting for capture.</p>
+
+        <div class="step">
+          <h3>Pre-start denial while ShuVoice records</h3>
+          <pre><code>shuvoice control start
+shuvoice control status
+uv run shuvagent control start
+uv run shuvagent control status
+shuvoice control stop --control-wait-sec 0
+shuvoice control status</code></pre>
+          <p>Expected safe evidence:</p>
+          <pre><code>OK recording
+ERROR start denied: shuvoice-recording
+OK idle
+OK stopped
+OK idle</code></pre>
+        </div>
+
+        <div class="step">
+          <h3>Mid-session pause and resume</h3>
+          <ol>
+            <li>Start a shuvagent session.</li>
+            <li>Trigger ShuVoice recording during the active session.</li>
+            <li>Release ShuVoice recording.</li>
+            <li>Confirm shuvagent resumes without manually restarting the session.</li>
+          </ol>
+          <p>Expected safe telemetry:</p>
+          <ul>
+            <li><code>shuvoice.mic_arbitration action=pause reason=shuvoice-took-mic</code></li>
+            <li><code>shuvoice.mic_arbitration action=resume reason=shuvoice-released-mic</code></li>
+            <li><code>response.cancel</code> or equivalent cancel request during pause.</li>
+            <li><code>input_audio_buffer.clear</code> or equivalent input buffer clear during pause.</li>
+          </ul>
+        </div>
+
+        <div class="step">
+          <h3>TTS stop before shuvagent session</h3>
+          <p>If ShuVoice TTS is active, starting shuvagent should request TTS stop before the shuvagent session connects.</p>
+          <p>Expected safe telemetry: <code>shuvoice.tts_stop_requested ok=true</code> before <code>agent.session.connected</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="gemini">
+      <div class="wrap">
+        <h2>7. Gemini Live / Pipecat Pass</h2>
+        <div class="callout warnbox">
+          <strong>Credential and model gate.</strong>
+          <p>This pass requires <code>GOOGLE_API_KEY</code> and account/model access for <code>models/gemini-3.1-flash-live-preview</code>. If the key is absent or the model is not enabled for the account, leave this gate blocked with the exact safe failure reason.</p>
+        </div>
+
+        <h3>Create a temporary Gemini config</h3>
+        <pre><code>tmp_config="$(mktemp /tmp/shuvagent-gemini-XXXX.toml)"
+cat &gt;"$tmp_config" &lt;&lt;'TOML'
+[realtime]
+provider = "gemini"
+model = "models/gemini-3.1-flash-live-preview"
+api_key_env = "GOOGLE_API_KEY"
+voice = "Charon"
+session_max_duration_sec = 300
+output_token_cap = 800
+request_timeout_sec = 10.0
+TOML</code></pre>
+
+        <h3>Run the opt-in live integration smoke</h3>
+        <pre><code>set -a
+. ~/.config/shuvagent/local.dev
+set +a
+SHUVAGENT_RUN_LIVE_GEMINI=1 uv run pytest tests/integration/test_live_gemini.py -q</code></pre>
+        <p>Expected evidence:</p>
+        <ul>
+          <li>The test passes and is not skipped.</li>
+          <li>No API key value is printed.</li>
+          <li>Any failure is recorded only as a safe structured reason.</li>
+        </ul>
+
+        <h3>Run the foreground Gemini session</h3>
+        <p>Terminal 1:</p>
+        <pre><code>uv run shuvagent --config "$tmp_config" run</code></pre>
+        <p>Terminal 2:</p>
+        <pre><code>uv run shuvagent --config "$tmp_config" control start
+uv run shuvagent --config "$tmp_config" control status</code></pre>
+        <p>Speak a short non-sensitive prompt and confirm audible response. Then stop:</p>
+        <pre><code>uv run shuvagent --config "$tmp_config" control stop
+uv run shuvagent --config "$tmp_config" control status</code></pre>
+        <p>Expected evidence:</p>
+        <ul>
+          <li>Session is constructed through Pipecat's Gemini Live service.</li>
+          <li>Mic audio is sent as PCM with explicit sample rate.</li>
+          <li>Model audio is returned and heard.</li>
+          <li>Read-only tools still route through the permission gate.</li>
+          <li>No transcript, selected text, clipboard text, or API key appears in logs.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <h2>8. Privacy And Redaction Audit</h2>
+        <p>After the live passes, inspect local logs or captured output for forbidden content. The exact log path may vary by config, but the audit question is always the same: event names and safe counts are okay; raw user content is not.</p>
+        <p>Search only for synthetic text you intentionally used for the privacy probe. Do not search for or paste real private selections.</p>
+        <pre><code>rg -n "privacy synthetic selected text should not appear|privacy synthetic clipboard text should not appear|sk-" ~/.local/share/shuvagent /tmp 2&gt;/dev/null || true</code></pre>
+        <p>Expected evidence:</p>
+        <pre><code>raw synthetic selected text in telemetry: false
+raw synthetic clipboard text in telemetry: false
+api key in telemetry: false</code></pre>
+        <p>Expected safe events for final human run:</p>
+        <ul>
+          <li><code>audio.capture_chunk</code></li>
+          <li><code>realtime.first_audio_response_latency_ms</code></li>
+          <li><code>audio.playback_chunk</code></li>
+          <li><code>tool.requested</code></li>
+          <li><code>tool.executed</code></li>
+          <li><code>agent.session.stopped</code></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="closure">
+      <div class="wrap">
+        <h2>9. Closure Packet</h2>
+        <p>Use this packet to update GitHub issue #1. Keep it concise and evidence-bounded.</p>
+        <div class="checkbox">Issue #1 final human validation packet
+
+Preflight:
+[ ] `uv run shuvagent issue1-qa` passed preflight.
+[ ] `OPENAI_API_KEY` was present without leaking value.
+[ ] `GOOGLE_API_KEY` was present without leaking value, or Gemini gate is explicitly blocked.
+[ ] `sounddevice`, `shuvoice`, `wl-paste`, and `hyprctl` probes passed.
+
+OpenAI voice session:
+[ ] `uv run shuvagent run` foreground process stayed up and exposed the control socket.
+[ ] `uv run shuvagent control start` returned `OK started session=&lt;id&gt;`.
+[ ] `uv run shuvagent control status` returned `OK active session=&lt;id&gt;`.
+[ ] Human spoke a non-sensitive prompt.
+[ ] `audio.capture_chunk` observed.
+[ ] `realtime.first_audio_response_latency_ms` observed.
+[ ] `audio.playback_chunk` observed.
+[ ] Human heard model speech through default speaker.
+[ ] `uv run shuvagent control stop` returned `OK stopped`.
+[ ] Final status returned `OK idle`.
+
+Selected text:
+[ ] Real primary selection was present; only byte count/hash was recorded.
+[ ] Spoken selected-text question used the real `wl-paste --primary` path.
+[ ] `tool.requested` and `tool.executed` observed for selected text read.
+[ ] Human confirmed the answer was relevant.
+[ ] No raw selected text was logged.
+
+ShuVoice:
+[ ] Start while ShuVoice recording was denied with `shuvoice-recording`.
+[ ] Mid-session ShuVoice recording paused shuvagent.
+[ ] Releasing ShuVoice resumed shuvagent.
+[ ] ShuVoice TTS stop was requested before shuvagent session start.
+
+Gemini:
+[ ] `SHUVAGENT_RUN_LIVE_GEMINI=1 uv run pytest tests/integration/test_live_gemini.py -q` passed and was not skipped.
+[ ] Gemini foreground/control session started with `provider = "gemini"`.
+[ ] Model `models/gemini-3.1-flash-live-preview` was used.
+[ ] Human heard Gemini model speech.
+[ ] No Google API key value was logged.
+
+Privacy:
+[ ] No transcripts, selected text, clipboard contents, audio bytes, or API key values were recorded.
+[ ] Evidence includes only command outputs, event names, structured reasons, counts/hashes, and human heard-audio yes/no.
+
+Conclusion:
+[ ] All issue #1 closure gates are satisfied.
+[ ] Issue #1 can be closed.</div>
+
+        <h3>Safe GitHub comment template</h3>
+        <pre><code>Issue #1 live validation complete.
+
+Safe evidence:
+- `uv run shuvagent issue1-qa` preflight: pass.
+- OpenAI foreground/control session: `OK started`, `OK active`, `OK stopped`, `OK idle`.
+- Human microphone prompt: pass.
+- Default speaker playback: audio heard.
+- Safe telemetry observed: `audio.capture_chunk`, `realtime.first_audio_response_latency_ms`, `audio.playback_chunk`, `tool.requested`, `tool.executed`, `agent.session.stopped`.
+- Selected-text Q&amp;A: real `wl-paste --primary` path used; answer relevant; raw selected text not recorded.
+- ShuVoice arbitration: start denial, pause/resume, and TTS stop verified.
+- Gemini/Pipecat: `models/gemini-3.1-flash-live-preview` with `GOOGLE_API_KEY` verified; no key value logged.
+- Privacy audit: no transcripts, selected text, clipboard contents, audio bytes, or API keys recorded.
+
+No raw user text or secret values are included in this comment.</code></pre>
+
+        <div class="callout danger">
+          <strong>Do not close early.</strong>
+          <p>If any checkbox above is not verified, keep issue #1 open and label it with the appropriate human/credential blocker. Passing unit tests or source validation alone is not enough for closure.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

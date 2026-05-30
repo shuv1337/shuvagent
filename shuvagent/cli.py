@@ -228,11 +228,13 @@ class _SessionRunner:
         api_key: str | None,
         sink: _TelemetrySink,
         status_writer: Callable[[str], None] | None = None,
+        stop_timeout_sec: float = 5.0,
     ) -> None:
         self._config = config
         self._api_key = api_key
         self._sink = sink
         self._status_writer = status_writer or _stderr_status
+        self._stop_timeout_sec = stop_timeout_sec
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
         self._session_id: str | None = None
@@ -276,7 +278,7 @@ class _SessionRunner:
             self._stop_event.set()
         if self._task is not None:
             try:
-                await asyncio.wait_for(self._task, timeout=5.0)
+                await asyncio.wait_for(self._task, timeout=self._stop_timeout_sec)
             except (TimeoutError, Exception):
                 self._task.cancel()
         self._task = None
