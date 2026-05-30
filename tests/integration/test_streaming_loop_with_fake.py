@@ -101,6 +101,92 @@ def test_run_streaming_drives_one_turn_then_stops() -> None:
     asyncio.run(run())
 
 
+def test_run_streaming_cancels_blocking_monitor_on_shutdown() -> None:
+    """A session monitor that never returns on its own must be started after
+    connect and cancelled on shutdown so background tasks do not leak (US22)."""
+
+    async def run() -> None:
+        session = FakeRealtimeSession(
+            [ScriptedTurn(user_audio=b"hello", audio_response=b"spoken")]
+        )
+        registry = ToolRegistry(window_snapshot=_window)
+        gate = PermissionGate(registry.specs(), window_snapshot=_window)
+        app = ConversationApp(session=session, registry=registry, gate=gate)
+
+        stop_event = asyncio.Event()
+        monitor_started = asyncio.Event()
+        monitor_cancelled = asyncio.Event()
+
+        async def playback(chunk: bytes) -> None:
+            del chunk
+
+        async def blocking_monitor() -> None:
+            assert session.is_open
+            monitor_started.set()
+            try:
+                await asyncio.Event().wait()  # never set: blocks indefinitely
+            except asyncio.CancelledError:
+                monitor_cancelled.set()
+                raise
+
+        async def mic() -> AsyncIterator[bytes]:
+            yield b"hello"
+            await asyncio.sleep(0.05)
+            stop_event.set()
+
+        await app.run_streaming(
+            audio_in=mic(),
+            playback=playback,
+            stop_event=stop_event,
+            session_monitors=[blocking_monitor],
+        )
+
+        assert monitor_started.is_set()
+        assert monitor_cancelled.is_set()
+        assert not session.is_open
+
+    asyncio.run(run())
+
+
+def test_run_streaming_emits_session_duration_ms() -> None:
+    """Completed sessions must emit agent.session.duration_ms with a numeric
+    duration so runs can be audited for runtime and cost (US28)."""
+
+    async def run() -> None:
+        session = FakeRealtimeSession([ScriptedTurn(user_audio=b"hello")])
+        registry = ToolRegistry(window_snapshot=_window)
+        gate = PermissionGate(registry.specs(), window_snapshot=_window)
+        app = ConversationApp(session=session, registry=registry, gate=gate)
+
+        stop_event = asyncio.Event()
+        events: list[tuple[str, dict[str, object]]] = []
+
+        async def playback(chunk: bytes) -> None:
+            del chunk
+
+        async def mic() -> AsyncIterator[bytes]:
+            yield b"hello"
+            await asyncio.sleep(0.05)
+            stop_event.set()
+
+        await app.run_streaming(
+            audio_in=mic(),
+            playback=playback,
+            stop_event=stop_event,
+            event_sink=lambda ev: events.append((ev.event, ev.attributes)),
+        )
+
+        duration_events = [
+            attrs for name, attrs in events if name == "agent.session.duration_ms"
+        ]
+        assert len(duration_events) == 1
+        duration_ms = duration_events[0]["duration_ms"]
+        assert isinstance(duration_ms, int | float)
+        assert duration_ms >= 0
+
+    asyncio.run(run())
+
+
 def test_run_streaming_emits_playback_error() -> None:
     async def run() -> None:
         session = FakeRealtimeSession(
