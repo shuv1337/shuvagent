@@ -72,11 +72,15 @@ request_timeout_sec = 10.0
 ```
 
 The requested issue #1 closure target is
-`models/gemini-3.1-flash-live-preview`. Public Google documentation available
-when this checklist was updated shows Gemini 3 Flash preview without Live API
-support and Live API examples using Gemini 2.5 native-audio/live models. Treat
-the Gemini 3.1 model name as unverified until this command passes with the
-actual `GOOGLE_API_KEY` and target account access.
+`models/gemini-3.1-flash-live-preview`. Re-checked 2026-05-29: Google now
+documents `gemini-3.1-flash-live-preview` as a supported (preview) Live API
+model, so the earlier "Gemini 3 Flash preview has no Live API support" note is
+out of date. The model string is therefore documented but still unproven for
+the target account: treat it as unverified until this command passes with the
+actual `GOOGLE_API_KEY` and account access. If the 3.1 preview is unavailable
+to the account, fall back to
+`models/gemini-2.5-flash-native-audio-preview-12-2025` (or the stable
+`models/gemini-live-2.5-flash-native-audio`).
 
 Then run the same foreground/control and voice-path checks with
 `GOOGLE_API_KEY` loaded:
